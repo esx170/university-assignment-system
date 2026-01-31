@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { assignmentSchema } from '@/lib/validations'
 import { getCurrentUser, Profile } from '@/lib/auth'
+import { AssignmentWithSubmissions } from '@/lib/database.types'
 
 export async function GET(request: NextRequest) {
   try {
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
         .select('course_id')
         .eq('student_id', userProfile.id)
       
-      const courseIds = enrollments?.map(e => e.course_id) || []
+      const courseIds = enrollments?.map((e: any) => e.course_id) || []
       query = query.in('course_id', courseIds)
     } else if (userProfile.role === 'instructor') {
       // Get assignments for courses taught by the instructor
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
         .select('id')
         .eq('instructor_id', userProfile.id)
       
-      const courseIds = courses?.map(c => c.id) || []
+      const courseIds = courses?.map((c: any) => c.id) || []
       query = query.in('course_id', courseIds)
     }
     // Admin can see all assignments (no filter)
@@ -52,9 +53,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    // Type assertion for the joined query results
+    const assignmentsWithSubmissions = assignments as AssignmentWithSubmissions[]
+
     // For students, add submission status
     if (userProfile.role === 'student') {
-      const assignmentsWithStatus = assignments?.map(assignment => {
+      const assignmentsWithStatus = assignmentsWithSubmissions?.map(assignment => {
         const userSubmission = assignment.submissions?.find(
           (sub: any) => sub.student_id === userProfile.id
         )
@@ -68,7 +72,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(assignmentsWithStatus)
     }
 
-    return NextResponse.json(assignments)
+    return NextResponse.json(assignmentsWithSubmissions)
   } catch (error) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

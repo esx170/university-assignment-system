@@ -8,6 +8,28 @@ export type Json =
 
 export type UserRole = 'student' | 'instructor' | 'admin'
 
+// Query result types for joined data
+export type AssignmentWithCourse = Database['public']['Tables']['assignments']['Row'] & {
+  courses: {
+    name: string
+    code: string
+    instructor_id: string
+  }
+}
+
+export type AssignmentWithSubmissions = Database['public']['Tables']['assignments']['Row'] & {
+  courses: {
+    name: string
+    code: string
+  }
+  submissions: Array<{
+    id: string
+    grade: number | null
+    submitted_at: string
+    student_id: string
+  }>
+}
+
 export interface Database {
   public: {
     Tables: {
