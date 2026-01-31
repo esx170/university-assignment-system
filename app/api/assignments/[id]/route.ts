@@ -1,11 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { getCurrentUser, Profile } from '@/lib/auth'
-import { AssignmentWithCourse } from '@/lib/database.types'
 
 interface RouteParams {
   params: {
     id: string
+  }
+}
+
+// Define the exact shape of our query result
+interface AssignmentQueryResult {
+  id: string
+  course_id: string
+  title: string
+  description: string | null
+  due_date: string
+  max_points: number
+  rubric_url: string | null
+  allow_late: boolean
+  late_penalty: number
+  file_types: string[]
+  max_file_size: number
+  created_at: string
+  updated_at: string
+  courses: {
+    name: string
+    code: string
+    instructor_id: string
   }
 }
 
@@ -16,10 +37,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // TypeScript now knows user is Profile type with proper role property
     const userProfile: Profile = user
 
-    const { data: assignment, error } = await supabase
+    const { data, error } = await supabase
       .from('assignments')
       .select(`
         *,
@@ -28,12 +48,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       .eq('id', params.id)
       .single()
 
-    if (error || !assignment) {
+    if (error || !data) {
       return NextResponse.json({ error: 'Assignment not found' }, { status: 404 })
     }
 
-    // Type assertion to help TypeScript understand the joined data structure
-    const assignmentWithCourse = assignment as AssignmentWithCourse
+    // Explicitly type the result
+    const assignment: AssignmentQueryResult = data as AssignmentQueryResult
 
     // Check if user has access to this assignment
     if (userProfile.role === 'student') {
@@ -42,7 +62,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         .from('enrollments')
         .select('id')
         .eq('student_id', userProfile.id)
-        .eq('course_id', assignmentWithCourse.course_id)
+        .eq('course_id', assignment.course_id)
         .single()
 
       if (!enrollment) {
@@ -50,13 +70,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
     } else if (userProfile.role === 'instructor') {
       // Check if instructor owns the course
-      if (assignmentWithCourse.courses.instructor_id !== userProfile.id) {
+      if (assignment.courses.instructor_id !== userProfile.id) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
     }
     // Admin can access all assignments
 
-    return NextResponse.json(assignmentWithCourse)
+    return NextResponse.json(assignment)
   } catch (error) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
@@ -80,7 +100,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (userProfile.role === 'instructor') {
       const { data: assignmentCheck } = await supabase
         .from('assignments')
-        .select('courses(instructor_id)')
+        .select(`
+          id,
+          courses!inner (instructor_id)
+        `)
         .eq('id', params.id)
         .single()
 
@@ -122,7 +145,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     if (userProfile.role === 'instructor') {
       const { data: assignmentCheck } = await supabase
         .from('assignments')
-        .select('courses(instructor_id)')
+        .select(`
+          id,
+          courses!inner (instructor_id)
+        `)
         .eq('id', params.id)
         .single()
 
