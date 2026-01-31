@@ -5,16 +5,21 @@ export type UserRole = 'student' | 'instructor' | 'admin'
 export type Profile = Database['public']['Tables']['profiles']['Row']
 
 export async function getCurrentUser() {
-  const { data: { user }, error } = await supabase.auth.getUser()
-  if (error || !user) return null
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser()
+    if (error || !user) return null
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single()
 
-  return profile
+    return profile
+  } catch (error) {
+    console.error('Error getting current user:', error)
+    return null
+  }
 }
 
 export async function signUp(email: string, password: string, userData: {
@@ -31,22 +36,6 @@ export async function signUp(email: string, password: string, userData: {
   })
 
   if (error) throw error
-
-  // Create profile
-  if (data.user) {
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .insert({
-        id: data.user.id,
-        email,
-        full_name: userData.full_name,
-        role: userData.role,
-        student_id: userData.student_id
-      })
-
-    if (profileError) throw profileError
-  }
-
   return data
 }
 

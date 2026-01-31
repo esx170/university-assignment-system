@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabase, supabaseAdmin } from '@/lib/supabase'
 import { courseSchema } from '@/lib/validations'
 import { getCurrentUser } from '@/lib/auth'
 
