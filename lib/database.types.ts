@@ -6,6 +6,8 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
+export type UserRole = 'student' | 'instructor' | 'admin'
+
 export interface Database {
   public: {
     Tables: {
@@ -14,7 +16,7 @@ export interface Database {
           id: string
           email: string
           full_name: string
-          role: 'student' | 'instructor' | 'admin'
+          role: UserRole
           student_id?: string
           created_at: string
           updated_at: string
@@ -23,7 +25,7 @@ export interface Database {
           id: string
           email: string
           full_name: string
-          role: 'student' | 'instructor' | 'admin'
+          role: UserRole
           student_id?: string
           created_at?: string
           updated_at?: string
@@ -32,7 +34,7 @@ export interface Database {
           id?: string
           email?: string
           full_name?: string
-          role?: 'student' | 'instructor' | 'admin'
+          role?: UserRole
           student_id?: string
           updated_at?: string
         }

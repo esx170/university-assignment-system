@@ -1,8 +1,11 @@
 import { supabase } from './supabase'
-import { Database } from './database.types'
+import { Database, UserRole } from './database.types'
 
-export type UserRole = 'student' | 'instructor' | 'admin'
 export type Profile = Database['public']['Tables']['profiles']['Row']
+
+export function isValidRole(role: unknown): role is UserRole {
+  return typeof role === 'string' && ['student', 'instructor', 'admin'].includes(role)
+}
 
 export async function getCurrentUser(): Promise<Profile | null> {
   try {
@@ -16,6 +19,13 @@ export async function getCurrentUser(): Promise<Profile | null> {
       .single()
 
     if (profileError || !profile) return null
+    
+    // Validate the role to ensure type safety
+    if (!isValidRole(profile.role)) {
+      console.error('Invalid role found in profile:', profile.role)
+      return null
+    }
+    
     return profile
   } catch (error) {
     console.error('Error getting current user:', error)
