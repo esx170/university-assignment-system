@@ -29,22 +29,21 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check if user has access to this assignment
-    const userProfile = user as Profile
-    if (userProfile.role === 'student') {
+    if (user.role === 'student') {
       // Check if student is enrolled in the course
       const { data: enrollment } = await supabase
         .from('enrollments')
         .select('id')
-        .eq('student_id', userProfile.id)
+        .eq('student_id', user.id)
         .eq('course_id', assignment.course_id)
         .single()
 
       if (!enrollment) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
-    } else if (userProfile.role === 'instructor') {
+    } else if (user.role === 'instructor') {
       // Check if instructor owns the course
-      if (assignment.courses.instructor_id !== userProfile.id) {
+      if (assignment.courses.instructor_id !== user.id) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
     }
@@ -63,22 +62,21 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     
-    const userProfile = user as Profile
-    if (userProfile.role !== 'instructor' && userProfile.role !== 'admin') {
+    if (user.role !== 'instructor' && user.role !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await request.json()
 
     // Verify ownership for instructors
-    if (userProfile.role === 'instructor') {
+    if (user.role === 'instructor') {
       const { data: assignment } = await supabase
         .from('assignments')
         .select('courses(instructor_id)')
         .eq('id', params.id)
         .single()
 
-      if (!assignment || assignment.courses.instructor_id !== userProfile.id) {
+      if (!assignment || assignment.courses.instructor_id !== user.id) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
     }
@@ -107,20 +105,19 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     
-    const userProfile = user as Profile
-    if (userProfile.role !== 'instructor' && userProfile.role !== 'admin') {
+    if (user.role !== 'instructor' && user.role !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Verify ownership for instructors
-    if (userProfile.role === 'instructor') {
+    if (user.role === 'instructor') {
       const { data: assignment } = await supabase
         .from('assignments')
         .select('courses(instructor_id)')
         .eq('id', params.id)
         .single()
 
-      if (!assignment || assignment.courses.instructor_id !== userProfile.id) {
+      if (!assignment || assignment.courses.instructor_id !== user.id) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
     }

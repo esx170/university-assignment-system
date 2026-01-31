@@ -17,19 +17,18 @@ export async function GET(request: NextRequest) {
     `)
 
     // Filter based on user role
-    const userProfile = user as Profile
-    if (userProfile.role === 'student') {
+    if (user.role === 'student') {
       // Get courses the student is enrolled in
       const { data: enrollments } = await supabase
         .from('enrollments')
         .select('course_id')
-        .eq('student_id', userProfile.id)
+        .eq('student_id', user.id)
       
       const courseIds = enrollments?.map(e => e.course_id) || []
       query = query.in('id', courseIds)
-    } else if (userProfile.role === 'instructor') {
+    } else if (user.role === 'instructor') {
       // Get courses taught by the instructor
-      query = query.eq('instructor_id', userProfile.id)
+      query = query.eq('instructor_id', user.id)
     }
     // Admin can see all courses (no filter)
 
@@ -52,8 +51,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     
-    const userProfile = user as Profile
-    if (userProfile.role !== 'instructor' && userProfile.role !== 'admin') {
+    if (user.role !== 'instructor' && user.role !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -64,7 +62,7 @@ export async function POST(request: NextRequest) {
       .from('courses')
       .insert({
         ...validatedData,
-        instructor_id: userProfile.role === 'instructor' ? userProfile.id : body.instructor_id
+        instructor_id: user.role === 'instructor' ? user.id : body.instructor_id
       })
       .select()
       .single()

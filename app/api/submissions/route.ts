@@ -23,15 +23,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Filter based on user role
-    const userProfile = user as Profile
-    if (userProfile.role === 'student') {
-      query = query.eq('student_id', userProfile.id)
-    } else if (userProfile.role === 'instructor') {
+    if (user.role === 'student') {
+      query = query.eq('student_id', user.id)
+    } else if (user.role === 'instructor') {
       // Get submissions for assignments in courses taught by the instructor
       const { data: courses } = await supabase
         .from('courses')
         .select('id')
-        .eq('instructor_id', userProfile.id)
+        .eq('instructor_id', user.id)
       
       const courseIds = courses?.map(c => c.id) || []
       
@@ -65,8 +64,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     
-    const userProfile = user as Profile
-    if (userProfile.role !== 'student') {
+    if (user.role !== 'student') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -92,7 +90,7 @@ export async function POST(request: NextRequest) {
     const { data: enrollment } = await supabase
       .from('enrollments')
       .select('id')
-      .eq('student_id', userProfile.id)
+      .eq('student_id', user.id)
       .eq('course_id', assignment.course_id)
       .single()
 
@@ -105,7 +103,7 @@ export async function POST(request: NextRequest) {
       .from('submissions')
       .select('id')
       .eq('assignment_id', assignmentId)
-      .eq('student_id', userProfile.id)
+      .eq('student_id', user.id)
       .single()
 
     if (existingSubmission) {
@@ -136,7 +134,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Upload file to Supabase Storage
-    const fileName = `${userProfile.id}/${assignmentId}/${Date.now()}-${file.name}`
+    const fileName = `${user.id}/${assignmentId}/${Date.now()}-${file.name}`
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('submissions')
       .upload(fileName, file)
@@ -150,7 +148,7 @@ export async function POST(request: NextRequest) {
       .from('submissions')
       .insert({
         assignment_id: assignmentId,
-        student_id: userProfile.id,
+        student_id: user.id,
         file_url: uploadData.path,
         file_name: file.name,
         file_size: file.size,

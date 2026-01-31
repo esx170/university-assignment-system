@@ -4,17 +4,18 @@ import { Database } from './database.types'
 export type UserRole = 'student' | 'instructor' | 'admin'
 export type Profile = Database['public']['Tables']['profiles']['Row']
 
-export async function getCurrentUser() {
+export async function getCurrentUser(): Promise<Profile | null> {
   try {
     const { data: { user }, error } = await supabase.auth.getUser()
     if (error || !user) return null
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single()
 
+    if (profileError || !profile) return null
     return profile
   } catch (error) {
     console.error('Error getting current user:', error)

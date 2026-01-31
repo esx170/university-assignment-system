@@ -24,22 +24,21 @@ export async function GET(request: NextRequest) {
     }
 
     // Filter based on user role
-    const userProfile = user as Profile
-    if (userProfile.role === 'student') {
+    if (user.role === 'student') {
       // Get assignments for courses the student is enrolled in
       const { data: enrollments } = await supabase
         .from('enrollments')
         .select('course_id')
-        .eq('student_id', userProfile.id)
+        .eq('student_id', user.id)
       
       const courseIds = enrollments?.map(e => e.course_id) || []
       query = query.in('course_id', courseIds)
-    } else if (userProfile.role === 'instructor') {
+    } else if (user.role === 'instructor') {
       // Get assignments for courses taught by the instructor
       const { data: courses } = await supabase
         .from('courses')
         .select('id')
-        .eq('instructor_id', userProfile.id)
+        .eq('instructor_id', user.id)
       
       const courseIds = courses?.map(c => c.id) || []
       query = query.in('course_id', courseIds)
@@ -53,10 +52,10 @@ export async function GET(request: NextRequest) {
     }
 
     // For students, add submission status
-    if (userProfile.role === 'student') {
+    if (user.role === 'student') {
       const assignmentsWithStatus = assignments?.map(assignment => {
         const userSubmission = assignment.submissions?.find(
-          (sub: any) => sub.student_id === userProfile.id
+          (sub: any) => sub.student_id === user.id
         )
         return {
           ...assignment,
@@ -81,8 +80,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     
-    const userProfile = user as Profile
-    if (userProfile.role !== 'instructor' && userProfile.role !== 'admin') {
+    if (user.role !== 'instructor' && user.role !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -90,14 +88,14 @@ export async function POST(request: NextRequest) {
     const validatedData = assignmentSchema.parse(body)
 
     // Verify the instructor owns the course (if instructor)
-    if (userProfile.role === 'instructor') {
+    if (user.role === 'instructor') {
       const { data: course } = await supabase
         .from('courses')
         .select('instructor_id')
         .eq('id', body.course_id)
         .single()
 
-      if (!course || course.instructor_id !== userProfile.id) {
+      if (!course || course.instructor_id !== user.id) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       }
     }
