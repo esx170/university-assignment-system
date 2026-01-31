@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser, Profile } from '@/lib/auth'
 
 interface RouteParams {
   params: {
@@ -29,21 +29,22 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check if user has access to this assignment
-    if (user.role === 'student') {
+    const userProfile = user as Profile
+    if (userProfile.role === 'student') {
       // Check if student is enrolled in the course
       const { data: enrollment } = await supabase
         .from('enrollments')
         .select('id')
-        .eq('student_id', user.id)
+        .eq('student_id', userProfile.id)
         .eq('course_id', assignment.course_id)
         .single()
 
       if (!enrollment) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
-    } else if (user.role === 'instructor') {
+    } else if (userProfile.role === 'instructor') {
       // Check if instructor owns the course
-      if (assignment.courses.instructor_id !== user.id) {
+      if (assignment.courses.instructor_id !== userProfile.id) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
     }
@@ -58,21 +59,26 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const user = await getCurrentUser()
-    if (!user || (user.role !== 'instructor' && user.role !== 'admin')) {
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    
+    const userProfile = user as Profile
+    if (userProfile.role !== 'instructor' && userProfile.role !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await request.json()
 
     // Verify ownership for instructors
-    if (user.role === 'instructor') {
+    if (userProfile.role === 'instructor') {
       const { data: assignment } = await supabase
         .from('assignments')
         .select('courses(instructor_id)')
         .eq('id', params.id)
         .single()
 
-      if (!assignment || assignment.courses.instructor_id !== user.id) {
+      if (!assignment || assignment.courses.instructor_id !== userProfile.id) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
     }
@@ -97,19 +103,24 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const user = await getCurrentUser()
-    if (!user || (user.role !== 'instructor' && user.role !== 'admin')) {
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    
+    const userProfile = user as Profile
+    if (userProfile.role !== 'instructor' && userProfile.role !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Verify ownership for instructors
-    if (user.role === 'instructor') {
+    if (userProfile.role === 'instructor') {
       const { data: assignment } = await supabase
         .from('assignments')
         .select('courses(instructor_id)')
         .eq('id', params.id)
         .single()
 
-      if (!assignment || assignment.courses.instructor_id !== user.id) {
+      if (!assignment || assignment.courses.instructor_id !== userProfile.id) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
     }
