@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase, supabaseAdmin } from '@/lib/supabase'
 import { courseSchema } from '@/lib/validations'
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser, Profile } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,18 +17,19 @@ export async function GET(request: NextRequest) {
     `)
 
     // Filter based on user role
-    if (user.role === 'student') {
+    const userProfile = user as Profile
+    if (userProfile.role === 'student') {
       // Get courses the student is enrolled in
       const { data: enrollments } = await supabase
         .from('enrollments')
         .select('course_id')
-        .eq('student_id', user.id)
+        .eq('student_id', userProfile.id)
       
       const courseIds = enrollments?.map(e => e.course_id) || []
       query = query.in('id', courseIds)
-    } else if (user.role === 'instructor') {
+    } else if (userProfile.role === 'instructor') {
       // Get courses taught by the instructor
-      query = query.eq('instructor_id', user.id)
+      query = query.eq('instructor_id', userProfile.id)
     }
     // Admin can see all courses (no filter)
 
@@ -47,7 +48,12 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const user = await getCurrentUser()
-    if (!user || (user.role !== 'instructor' && user.role !== 'admin')) {
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    
+    const userProfile = user as Profile
+    if (userProfile.role !== 'instructor' && userProfile.role !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -58,7 +64,7 @@ export async function POST(request: NextRequest) {
       .from('courses')
       .insert({
         ...validatedData,
-        instructor_id: user.role === 'instructor' ? user.id : body.instructor_id
+        instructor_id: userProfile.role === 'instructor' ? userProfile.id : body.instructor_id
       })
       .select()
       .single()
