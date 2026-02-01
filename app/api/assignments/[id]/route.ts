@@ -37,6 +37,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Explicitly assert the type after null check
+    const authenticatedUser: Profile = user
+
     // Now TypeScript knows user is not null
     const { data, error } = await supabase
       .from('assignments')
@@ -55,21 +58,21 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const assignment: AssignmentQueryResult = data as AssignmentQueryResult
 
     // Check if user has access to this assignment
-    if (user.role === 'student') {
+    if (authenticatedUser.role === 'student') {
       // Check if student is enrolled in the course
       const { data: enrollment } = await supabase
         .from('enrollments')
         .select('id')
-        .eq('student_id', user.id)
+        .eq('student_id', authenticatedUser.id)
         .eq('course_id', assignment.course_id)
         .single()
 
       if (!enrollment) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
-    } else if (user.role === 'instructor') {
+    } else if (authenticatedUser.role === 'instructor') {
       // Check if instructor owns the course
-      if (assignment.courses.instructor_id !== user.id) {
+      if (assignment.courses.instructor_id !== authenticatedUser.id) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
     }
@@ -88,14 +91,17 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     
-    if (user.role !== 'instructor' && user.role !== 'admin') {
+    // Explicitly assert the type after null check
+    const authenticatedUser: Profile = user
+    
+    if (authenticatedUser.role !== 'instructor' && authenticatedUser.role !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await request.json()
 
     // Verify ownership for instructors
-    if (user.role === 'instructor') {
+    if (authenticatedUser.role === 'instructor') {
       const { data: assignmentCheck } = await supabase
         .from('assignments')
         .select(`
@@ -105,7 +111,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         .eq('id', params.id)
         .single()
 
-      if (!assignmentCheck || (assignmentCheck as any).courses.instructor_id !== user.id) {
+      if (!assignmentCheck || (assignmentCheck as any).courses.instructor_id !== authenticatedUser.id) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
     }
@@ -134,12 +140,15 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     
-    if (user.role !== 'instructor' && user.role !== 'admin') {
+    // Explicitly assert the type after null check
+    const authenticatedUser: Profile = user
+    
+    if (authenticatedUser.role !== 'instructor' && authenticatedUser.role !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // Verify ownership for instructors
-    if (user.role === 'instructor') {
+    if (authenticatedUser.role === 'instructor') {
       const { data: assignmentCheck } = await supabase
         .from('assignments')
         .select(`
@@ -149,7 +158,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
         .eq('id', params.id)
         .single()
 
-      if (!assignmentCheck || (assignmentCheck as any).courses.instructor_id !== user.id) {
+      if (!assignmentCheck || (assignmentCheck as any).courses.instructor_id !== authenticatedUser.id) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
     }
