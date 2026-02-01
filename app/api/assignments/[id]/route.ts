@@ -37,7 +37,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Explicitly assert the type after null check
+    // Explicitly assert the type after null check to ensure TypeScript knows the exact type
     const authenticatedUser: Profile = user
 
     // Now TypeScript knows user is not null
