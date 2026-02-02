@@ -1,0 +1,222 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  student
+  instructor
+  admin
+}
+
+enum SubmissionStatus {
+  pending
+  approved
+  denied
+}
+
+enum NotificationType {
+  assignment
+  grade
+  extension
+  system
+}
+
+// NextAuth required models
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?   // For credentials provider
+  accounts      Account[]
+  sessions      Session[]
+  profile       Profile?
+
+  @@map("users")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verificationtokens")
+}
+
+// Application models
+model Profile {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  email      String   @unique
+  full_name  String
+  role       UserRole @default(student)
+  student_id String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Relations
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courses_taught     Course[]             @relation("InstructorCourses")
+  enrollments        Enrollment[]
+  submissions        Submission[]
+  extension_requests ExtensionRequest[]
+  notifications      Notification[]
+  graded_submissions Submission[]         @relation("GradedBy")
+  reviewed_extensions ExtensionRequest[]  @relation("ReviewedBy")
+
+  @@map("profiles")
+}
+
+model Course {
+  id           String   @id @default(cuid())
+  name         String
+  code         String   @unique
+  description  String?
+  instructor_id String
+  semester     String
+  year         Int
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  // Relations
+  instructor   Profile      @relation("InstructorCourses", fields: [instructor_id], references: [id], onDelete: Cascade)
+  enrollments  Enrollment[]
+  assignments  Assignment[]
+
+  @@map("courses")
+}
+
+model Enrollment {
+  id          String   @id @default(cuid())
+  student_id  String
+  course_id   String
+  enrolled_at DateTime @default(now())
+
+  // Relations
+  student Profile @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [course_id], references: [id], onDelete: Cascade)
+
+  @@unique([student_id, course_id])
+  @@map("enrollments")
+}
+
+model Assignment {
+  id            String   @id @default(cuid())
+  course_id     String
+  title         String
+  description   String?
+  due_date      DateTime
+  max_points    Int      @default(100)
+  rubric_url    String?
+  allow_late    Boolean  @default(false)
+  late_penalty  Int      @default(0)
+  file_types    String[] @default(["pdf", "doc", "docx", "zip"])
+  max_file_size Int      @default(10) // in MB
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  // Relations
+  course             Course             @relation(fields: [course_id], references: [id], onDelete: Cascade)
+  submissions        Submission[]
+  extension_requests ExtensionRequest[]
+
+  @@map("assignments")
+}
+
+model Submission {
+  id           String    @id @default(cuid())
+  assignment_id String
+  student_id   String
+  file_url     String    // Supabase Storage URL
+  file_name    String
+  file_size    Int
+  submitted_at DateTime  @default(now())
+  is_late      Boolean   @default(false)
+  grade        Int?
+  feedback     String?
+  graded_at    DateTime?
+  graded_by    String?
+
+  // Relations
+  assignment Assignment @relation(fields: [assignment_id], references: [id], onDelete: Cascade)
+  student    Profile    @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  grader     Profile?   @relation("GradedBy", fields: [graded_by], references: [id])
+
+  @@unique([assignment_id, student_id])
+  @@map("submissions")
+}
+
+model ExtensionRequest {
+  id             String           @id @default(cuid())
+  assignment_id  String
+  student_id     String
+  reason         String
+  requested_date DateTime
+  status         SubmissionStatus @default(pending)
+  reviewed_by    String?
+  reviewed_at    DateTime?
+  created_at     DateTime         @default(now())
+
+  // Relations
+  assignment Assignment @relation(fields: [assignment_id], references: [id], onDelete: Cascade)
+  student    Profile    @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  reviewer   Profile?   @relation("ReviewedBy", fields: [reviewed_by], references: [id])
+
+  @@unique([assignment_id, student_id])
+  @@map("extension_requests")
+}
+
+model Notification {
+  id         String           @id @default(cuid())
+  user_id    String
+  title      String
+  message    String
+  type       NotificationType
+  read       Boolean          @default(false)
+  created_at DateTime         @default(now())
+
+  // Relations
+  user Profile @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}

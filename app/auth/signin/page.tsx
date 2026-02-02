@@ -27,8 +27,10 @@ export default function SignInPage() {
       await signIn(data.email, data.password)
       toast.success('Signed in successfully!')
       router.push('/dashboard')
+      router.refresh()
     } catch (error: any) {
-      toast.error(error.message || 'Failed to sign in')
+      console.error('Signin error:', error)
+      toast.error(error.message || 'Invalid email or password')
     } finally {
       setLoading(false)
     }

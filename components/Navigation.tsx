@@ -44,7 +44,7 @@ export default function Navigation({ profile }: NavigationProps) {
         ...baseItems,
         { name: 'My Courses', href: '/courses', icon: BookOpen },
         { name: 'Assignments', href: '/assignments', icon: FileText },
-        { name: 'Submissions', href: '/submissions', icon: FileText },
+        { name: 'My Submissions', href: '/submissions', icon: FileText },
       ]
     }
 
@@ -60,10 +60,10 @@ export default function Navigation({ profile }: NavigationProps) {
     if (profile?.role === 'admin') {
       return [
         ...baseItems,
-        { name: 'Users', href: '/admin/users', icon: Users },
-        { name: 'Courses', href: '/admin/courses', icon: BookOpen },
-        { name: 'Reports', href: '/admin/reports', icon: FileText },
-        { name: 'Settings', href: '/admin/settings', icon: Settings },
+        { name: 'Admin Panel', href: '/admin', icon: Users },
+        { name: 'All Courses', href: '/courses', icon: BookOpen },
+        { name: 'All Assignments', href: '/assignments', icon: FileText },
+        { name: 'System Settings', href: '/admin/settings', icon: Settings },
       ]
     }
 

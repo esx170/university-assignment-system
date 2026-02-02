@@ -1,11 +1,29 @@
 import { z } from 'zod'
 
+// Define role enum directly instead of using Prisma
+const UserRole = z.enum(['student', 'instructor', 'admin'])
+
+// Public signup schema - only for students, no role selection
 export const signUpSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   full_name: z.string().min(2, 'Full name must be at least 2 characters'),
-  role: z.enum(['student', 'instructor', 'admin']),
+  student_id: z.string().min(1, 'Student ID is required')
+})
+
+// Admin-only user creation schema with role selection
+export const adminCreateUserSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  full_name: z.string().min(2, 'Full name must be at least 2 characters'),
+  role: UserRole,
   student_id: z.string().optional()
+})
+
+// Role update schema for admin use
+export const roleUpdateSchema = z.object({
+  userId: z.string().uuid('Invalid user ID'),
+  newRole: UserRole
 })
 
 export const signInSchema = z.object({
@@ -50,6 +68,8 @@ export const extensionRequestSchema = z.object({
 })
 
 export type SignUpInput = z.infer<typeof signUpSchema>
+export type AdminCreateUserInput = z.infer<typeof adminCreateUserSchema>
+export type RoleUpdateInput = z.infer<typeof roleUpdateSchema>
 export type SignInInput = z.infer<typeof signInSchema>
 export type CourseInput = z.infer<typeof courseSchema>
 export type AssignmentInput = z.infer<typeof assignmentSchema>
