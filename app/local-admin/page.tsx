@@ -45,7 +45,6 @@ export default function LocalAdminPage() {
         <h1 className="text-3xl font-bold mb-8 text-center">Local Development - Admin Setup</h1>
         
         <div className="space-y-6">
-          {/* Step 1: Check Environment */}
           <div className="bg-white p-6 rounded-lg shadow">
             <h2 className="text-xl font-semibold mb-4">Step 1: Check Environment Variables</h2>
             <button
@@ -68,7 +67,6 @@ export default function LocalAdminPage() {
             )}
           </div>
 
-          {/* Step 2: Create Admin */}
           {step >= 2 && (
             <div className="bg-white p-6 rounded-lg shadow">
               <h2 className="text-xl font-semibold mb-4">Step 2: Create Admin User</h2>
@@ -90,7 +88,6 @@ export default function LocalAdminPage() {
             </div>
           )}
 
-          {/* Step 3: Success */}
           {step >= 3 && result?.success && (
             <div className="bg-white p-6 rounded-lg shadow">
               <h2 className="text-xl font-semibold mb-4 text-green-600">✅ Admin Created Successfully!</h2>
@@ -121,7 +118,6 @@ export default function LocalAdminPage() {
             </div>
           )}
 
-          {/* Error Display */}
           {result?.error && (
             <div className="bg-white p-6 rounded-lg shadow">
               <h2 className="text-xl font-semibold mb-4 text-red-600">❌ Error</h2>
@@ -136,17 +132,16 @@ export default function LocalAdminPage() {
             </div>
           )}
 
-          {/* Manual Instructions */}
           <div className="bg-yellow-50 border border-yellow-200 p-6 rounded-lg">
             <h3 className="font-bold text-yellow-800 mb-2">Manual Alternative (if API fails):</h3>
             <ol className="text-sm text-yellow-700 space-y-1 list-decimal list-inside">
-              <li>Go to <a href="https://supabase.com/dashboard" className="underline" target="_blank">Supabase Dashboard</a></li>
+              <li>Go to <a href="https://supabase.com/dashboard" className="underline" target="_blank" rel="noopener noreferrer">Supabase Dashboard</a></li>
               <li>Select your project: jcbnprvpceywmkfdcyyy</li>
               <li>Go to Authentication → Users</li>
-              <li>Click "Add user"</li>
+              <li>Click Add user</li>
               <li>Email: admin@university.edu, Password: Admin123!@#</li>
-              <li>Check "Auto Confirm User"</li>
-              <li>After creating, edit user metadata: {"role": "admin", "full_name": "System Administrator"}</li>
+              <li>Check Auto Confirm User</li>
+              <li>After creating, edit user metadata</li>
             </ol>
           </div>
         </div>
