@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getCurrentUser, Profile, isHardcodedAdmin } from '@/lib/auth'
+import { getCurrentUserWithAuth, Profile, isAdmin } from '@/lib/auth'
+import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { Settings, Shield, Database, Mail, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -9,6 +10,7 @@ import toast from 'react-hot-toast'
 export default function AdminSettingsPage() {
   const [currentUser, setCurrentUser] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [settings, setSettings] = useState({
     allowPublicRegistration: true,
     requireEmailConfirmation: false,
@@ -20,24 +22,53 @@ export default function AdminSettingsPage() {
   const router = useRouter()
 
   useEffect(() => {
-    checkAuth()
+    checkAuthAndLoadSettings()
   }, [])
 
-  const checkAuth = async () => {
+  const checkAuthAndLoadSettings = async () => {
     try {
-      const user = await getCurrentUser()
-      if (!user || !isHardcodedAdmin(user.email)) {
-        toast.error('Access denied: System administrator privileges required')
+      const user = await getCurrentUserWithAuth()
+      if (!user || !isAdmin(user)) {
+        toast.error('Access denied: Administrator privileges required')
         router.push('/dashboard')
         return
       }
       setCurrentUser(user)
+      await loadSettings()
     } catch (error) {
       console.error('Auth check error:', error)
       router.push('/auth/signin')
     } finally {
       setLoading(false)
     }
+  }
+
+  const loadSettings = async () => {
+    try {
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch('/api/admin/settings', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      })
+      if (!response.ok) {
+        throw new Error('Failed to load settings')
+      }
+      const data = await response.json()
+      setSettings(data)
+    } catch (error) {
+      console.error('Load settings error:', error)
+      toast.error('Failed to load settings')
+    }
+  }
+
+  const checkAuth = async () => {
+    // This method is now replaced by checkAuthAndLoadSettings
   }
 
   const handleSettingChange = (key: string, value: any) => {
@@ -48,11 +79,42 @@ export default function AdminSettingsPage() {
   }
 
   const saveSettings = async () => {
+    setSaving(true)
     try {
-      // In a real app, this would save to a database
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          allowPublicRegistration: settings.allowPublicRegistration,
+          requireEmailConfirmation: settings.requireEmailConfirmation,
+          maxFileSize: settings.maxFileSize,
+          allowedFileTypes: settings.allowedFileTypes,
+          systemName: settings.systemName
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to save settings')
+      }
+
+      const data = await response.json()
+      setSettings(data.settings)
       toast.success('Settings saved successfully')
-    } catch (error) {
-      toast.error('Failed to save settings')
+    } catch (error: any) {
+      console.error('Save settings error:', error)
+      toast.error(error.message || 'Failed to save settings')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -222,9 +284,10 @@ export default function AdminSettingsPage() {
           <div className="flex justify-end">
             <button
               onClick={saveSettings}
-              className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              disabled={saving}
+              className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Save Settings
+              {saving ? 'Saving...' : 'Save Settings'}
             </button>
           </div>
         </div>

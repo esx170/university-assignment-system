@@ -46,7 +46,8 @@ export async function getCurrentUser(): Promise<Profile | null> {
 export async function signUp(email: string, password: string, userData: {
   full_name: string
   student_id: string
-}) {
+  department_id?: string
+}): Promise<{ user: any; session: any; needsConfirmation?: boolean; message?: string }> {
   try {
     // Prevent admin email from being used in public signup
     if (email === ADMIN_EMAIL) {
@@ -61,7 +62,8 @@ export async function signUp(email: string, password: string, userData: {
         data: {
           full_name: userData.full_name,
           role: 'student', // Always student for public signup
-          student_id: userData.student_id
+          student_id: userData.student_id,
+          department_id: userData.department_id
         }
       }
     })
@@ -81,13 +83,17 @@ export async function signUp(email: string, password: string, userData: {
     if (data.user && !data.session) {
       console.log('Email confirmation required')
       return { 
-        ...data, 
+        user: data.user,
+        session: data.session,
         needsConfirmation: true,
         message: 'Please check your email to confirm your account before signing in.'
       }
     }
 
-    return data
+    return {
+      user: data.user,
+      session: data.session
+    }
   } catch (error: any) {
     console.error('Signup error:', error)
     throw error
@@ -158,7 +164,53 @@ export function hasRole(profile: Profile | null, allowedRoles: ('student' | 'ins
   return profile ? allowedRoles.includes(profile.role) : false
 }
 
+// Check if user is admin (either hardcoded admin or has admin role)
+export function isAdmin(user: Profile | null): boolean {
+  if (!user) return false
+  return user.email === ADMIN_EMAIL || user.role === 'admin'
+}
+
 // Check if user is the hardcoded admin
 export function isHardcodedAdmin(email: string): boolean {
   return email === ADMIN_EMAIL
+}
+
+// Enhanced getCurrentUser with better error handling and logging
+export async function getCurrentUserWithAuth(): Promise<Profile | null> {
+  try {
+    console.log('Getting current user with auth...')
+    const { data: { user }, error } = await supabase.auth.getUser()
+    
+    if (error) {
+      console.error('Auth error:', error)
+      return null
+    }
+    
+    if (!user) {
+      console.log('No authenticated user found')
+      return null
+    }
+
+    console.log('Authenticated user found:', user.email)
+
+    // Check if this is the hardcoded admin user
+    const isHardcodedAdminUser = user.email === ADMIN_EMAIL
+
+    // Get user data from Supabase Auth metadata
+    const profile: Profile = {
+      id: user.id,
+      email: user.email || '',
+      full_name: user.user_metadata?.full_name || user.email || '',
+      role: isHardcodedAdminUser ? 'admin' : (user.user_metadata?.role as 'student' | 'instructor' | 'admin') || 'student',
+      student_id: user.user_metadata?.student_id || null,
+      created_at: new Date(user.created_at),
+      updated_at: new Date()
+    }
+
+    console.log('User profile:', { email: profile.email, role: profile.role })
+    return profile
+  } catch (error) {
+    console.error('Error getting current user:', error)
+    return null
+  }
 }

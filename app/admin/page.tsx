@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getCurrentUser, Profile } from '@/lib/auth'
+import { getCurrentUserWithAuth, Profile, isAdmin } from '@/lib/auth'
+import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 
@@ -14,6 +15,7 @@ type User = {
   email_confirmed: boolean
   created_at: string
   last_sign_in: string | null
+  is_system_admin: boolean
 }
 
 export default function AdminDashboard() {
@@ -21,6 +23,15 @@ export default function AdminDashboard() {
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<string | null>(null)
+  const [showCreateUser, setShowCreateUser] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [newUser, setNewUser] = useState({
+    email: '',
+    password: '',
+    full_name: '',
+    role: 'instructor' as 'student' | 'instructor',
+    student_id: ''
+  })
   const router = useRouter()
 
   useEffect(() => {
@@ -29,9 +40,9 @@ export default function AdminDashboard() {
 
   const checkAuth = async () => {
     try {
-      const user = await getCurrentUser()
-      if (!user || user.role !== 'admin') {
-        toast.error('Access denied: System administrator privileges required')
+      const user = await getCurrentUserWithAuth()
+      if (!user || !isAdmin(user)) {
+        toast.error('Access denied: Administrator privileges required')
         router.push('/dashboard')
         return
       }
@@ -46,7 +57,18 @@ export default function AdminDashboard() {
   const loadUsers = async () => {
     try {
       console.log('Loading users from API...')
-      const response = await fetch('/api/admin/users')
+      
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch('/api/admin/users', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      })
       
       if (!response.ok) {
         const errorData = await response.json()
@@ -65,6 +87,47 @@ export default function AdminDashboard() {
     }
   }
 
+  const createUser = async () => {
+    setCreating(true)
+    try {
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify(newUser),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to create user')
+      }
+
+      toast.success(`${newUser.role} account created successfully`)
+      setShowCreateUser(false)
+      setNewUser({
+        email: '',
+        password: '',
+        full_name: '',
+        role: 'instructor',
+        student_id: ''
+      })
+      await loadUsers() // Reload users to show new user
+    } catch (error: any) {
+      console.error('Create user error:', error)
+      toast.error(error.message || 'Failed to create user')
+    } finally {
+      setCreating(false)
+    }
+  }
+
   const updateUserRole = async (userId: string, newRole: 'student' | 'instructor' | 'admin') => {
     if (userId === currentUser?.id) {
       toast.error('Cannot modify your own role')
@@ -80,10 +143,17 @@ export default function AdminDashboard() {
 
     setUpdating(userId)
     try {
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        throw new Error('No authentication token found')
+      }
+
       const response = await fetch(`/api/admin/users/${userId}/role`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
         },
         body: JSON.stringify({ newRole }),
       })
@@ -133,7 +203,15 @@ export default function AdminDashboard() {
 
         <div className="bg-white shadow overflow-hidden sm:rounded-md">
           <div className="px-4 py-5 sm:p-6">
-            <h2 className="text-lg font-medium text-gray-900 mb-4">User Management</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-medium text-gray-900">User Management</h2>
+              <button
+                onClick={() => setShowCreateUser(true)}
+                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                Create Instructor
+              </button>
+            </div>
             
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
@@ -215,6 +293,87 @@ export default function AdminDashboard() {
             )}
           </div>
         </div>
+
+        {/* Create User Modal */}
+        {showCreateUser && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+            <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+              <div className="mt-3">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Create New User</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Email</label>
+                    <input
+                      type="email"
+                      value={newUser.email}
+                      onChange={(e) => setNewUser({...newUser, email: e.target.value})}
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="user@university.edu"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Password</label>
+                    <input
+                      type="password"
+                      value={newUser.password}
+                      onChange={(e) => setNewUser({...newUser, password: e.target.value})}
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Password123!"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Full Name</label>
+                    <input
+                      type="text"
+                      value={newUser.full_name}
+                      onChange={(e) => setNewUser({...newUser, full_name: e.target.value})}
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="John Doe"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Role</label>
+                    <select
+                      value={newUser.role}
+                      onChange={(e) => setNewUser({...newUser, role: e.target.value as 'student' | 'instructor'})}
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="instructor">Instructor</option>
+                      <option value="student">Student</option>
+                    </select>
+                  </div>
+                  {newUser.role === 'student' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Student ID</label>
+                      <input
+                        type="text"
+                        value={newUser.student_id}
+                        onChange={(e) => setNewUser({...newUser, student_id: e.target.value})}
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="STU001"
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    onClick={() => setShowCreateUser(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={createUser}
+                    disabled={creating || !newUser.email || !newUser.password || !newUser.full_name}
+                    className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {creating ? 'Creating...' : 'Create User'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="mt-8 bg-white shadow sm:rounded-lg">
           <div className="px-4 py-5 sm:p-6">

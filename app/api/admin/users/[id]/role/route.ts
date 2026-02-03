@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCurrentUser, isHardcodedAdmin } from '@/lib/auth'
 import { createClient } from '@supabase/supabase-js'
 
-// PUT - Update user role (Hardcoded admin only)
+// PUT - Update user role (Admin only)
 export async function PUT(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -10,9 +9,37 @@ export async function PUT(
   try {
     console.log('Role update API called for user:', params.id)
     
-    const user = await getCurrentUser()
-    if (!user || !isHardcodedAdmin(user.email)) {
-      return NextResponse.json({ error: 'Unauthorized: Only the system administrator can update user roles' }, { status: 403 })
+    // Get the authorization header
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized: No authentication token provided' }, { status: 401 })
+    }
+
+    const token = authHeader.substring(7) // Remove 'Bearer ' prefix
+
+    // Create client with the user's token
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseClient = createClient(supabaseUrl!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    })
+
+    // Verify the user with their token
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
+    
+    if (userError || !user) {
+      return NextResponse.json({ error: 'Unauthorized: Invalid authentication token' }, { status: 401 })
+    }
+
+    // Check if user is admin
+    const isHardcodedAdmin = user.email === 'admin@university.edu'
+    const userRole = isHardcodedAdmin ? 'admin' : (user.user_metadata?.role || 'student')
+
+    if (!isHardcodedAdmin && userRole !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized: Only administrators can update user roles' }, { status: 403 })
     }
 
     const body = await request.json()
@@ -26,7 +53,6 @@ export async function PUT(
     }
 
     // Create admin client directly
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
     if (!supabaseUrl || !supabaseServiceKey) {
@@ -50,7 +76,7 @@ export async function PUT(
     }
 
     // Prevent modifying the hardcoded admin user
-    if (isHardcodedAdmin(targetUser.user.email || '')) {
+    if (targetUser.user.email === 'admin@university.edu') {
       return NextResponse.json({ error: 'Cannot modify the system administrator account' }, { status: 400 })
     }
 

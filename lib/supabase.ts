@@ -8,7 +8,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables. Please check your .env.local file or Vercel environment variables.')
 }
 
-// Supabase client for Auth and Storage
+// Client-side Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 // Server-side client with service role key for admin operations

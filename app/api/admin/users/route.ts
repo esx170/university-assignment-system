@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCurrentUser, isHardcodedAdmin } from '@/lib/auth'
 import { createClient } from '@supabase/supabase-js'
 
-// GET - List all users (Hardcoded admin only)
+// GET - List all users (Admin only)
 export async function GET(request: NextRequest) {
   try {
     console.log('Admin users API called')
     
-    const user = await getCurrentUser()
-    console.log('Current user:', user?.email, user?.role)
-    
-    if (!user || !isHardcodedAdmin(user.email)) {
-      console.log('Access denied - not admin')
-      return NextResponse.json({ error: 'Unauthorized: Only the system administrator can access this' }, { status: 403 })
+    // Get the authorization header
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log('No authorization header found')
+      return NextResponse.json({ error: 'Unauthorized: No authentication token provided' }, { status: 401 })
     }
+
+    const token = authHeader.substring(7) // Remove 'Bearer ' prefix
 
     // Create admin client directly
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -31,6 +31,34 @@ export async function GET(request: NextRequest) {
         error: 'Server configuration error',
         details: 'Missing Supabase environment variables'
       }, { status: 500 })
+    }
+
+    // Create client with the user's token
+    const supabaseClient = createClient(supabaseUrl, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    })
+
+    // Verify the user with their token
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
+    
+    if (userError || !user) {
+      console.log('Invalid token or user not found')
+      return NextResponse.json({ error: 'Unauthorized: Invalid authentication token' }, { status: 401 })
+    }
+
+    console.log('Authenticated user:', user.email)
+
+    // Check if user is admin
+    const isHardcodedAdmin = user.email === 'admin@university.edu'
+    const userRole = isHardcodedAdmin ? 'admin' : (user.user_metadata?.role || 'student')
+
+    if (!isHardcodedAdmin && userRole !== 'admin') {
+      console.log('Access denied - not admin')
+      return NextResponse.json({ error: 'Unauthorized: Only administrators can access this' }, { status: 403 })
     }
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
@@ -58,12 +86,12 @@ export async function GET(request: NextRequest) {
       id: user.id,
       email: user.email,
       full_name: user.user_metadata?.full_name || '',
-      role: isHardcodedAdmin(user.email || '') ? 'admin' : (user.user_metadata?.role || 'student'),
+      role: user.email === 'admin@university.edu' ? 'admin' : (user.user_metadata?.role || 'student'),
       student_id: user.user_metadata?.student_id || null,
       email_confirmed: user.email_confirmed_at !== null,
       created_at: user.created_at,
       last_sign_in: user.last_sign_in_at,
-      is_system_admin: isHardcodedAdmin(user.email || '')
+      is_system_admin: user.email === 'admin@university.edu'
     }))
 
     console.log('Returning formatted users')
@@ -77,12 +105,40 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Create new user (Hardcoded admin only)
+// POST - Create new user (Admin only)
 export async function POST(request: NextRequest) {
   try {
-    const user = await getCurrentUser()
-    if (!user || !isHardcodedAdmin(user.email)) {
-      return NextResponse.json({ error: 'Unauthorized: Only the system administrator can create users' }, { status: 403 })
+    // Get the authorization header
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized: No authentication token provided' }, { status: 401 })
+    }
+
+    const token = authHeader.substring(7) // Remove 'Bearer ' prefix
+
+    // Create client with the user's token
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseClient = createClient(supabaseUrl!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    })
+
+    // Verify the user with their token
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
+    
+    if (userError || !user) {
+      return NextResponse.json({ error: 'Unauthorized: Invalid authentication token' }, { status: 401 })
+    }
+
+    // Check if user is admin
+    const isHardcodedAdmin = user.email === 'admin@university.edu'
+    const userRole = isHardcodedAdmin ? 'admin' : (user.user_metadata?.role || 'student')
+
+    if (!isHardcodedAdmin && userRole !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized: Only administrators can create users' }, { status: 403 })
     }
 
     const body = await request.json()
@@ -94,12 +150,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Prevent using the admin email
-    if (isHardcodedAdmin(email)) {
+    if (email === 'admin@university.edu') {
       return NextResponse.json({ error: 'This email address is reserved for system administration' }, { status: 400 })
     }
 
     // Create admin client directly
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
     if (!supabaseUrl || !supabaseServiceKey) {
