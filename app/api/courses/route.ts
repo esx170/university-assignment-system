@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getAllCourses, addCourse } from '@/lib/mock-storage'
 
-// GET - List courses (simplified version without departments)
+// GET - List courses (using persistent mock storage)
 export async function GET(request: NextRequest) {
   try {
     // Get the authorization header
@@ -29,57 +30,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized: Invalid authentication token' }, { status: 401 })
     }
 
-    // For now, return mock courses since we don't have the full database schema
-    const mockCourses = [
-      {
-        id: '1',
-        name: 'Introduction to Computer Science',
-        code: 'CS101',
-        description: 'Basic concepts of programming and computer science',
-        credits: 3,
-        semester: 'Fall',
-        year: 2024,
-        department_id: null,
-        instructor_id: user.id,
-        department: {
-          id: '1',
-          name: 'Computer Science',
-          code: 'CS'
-        },
-        instructor: {
-          id: user.id,
-          full_name: user.user_metadata?.full_name || 'Instructor',
-          email: user.email
-        },
-        enrollments: [{ count: 0 }],
-        assignments: [{ count: 0 }]
-      },
-      {
-        id: '2',
-        name: 'Data Structures and Algorithms',
-        code: 'CS201',
-        description: 'Advanced programming concepts and algorithm design',
-        credits: 4,
-        semester: 'Spring',
-        year: 2024,
-        department_id: null,
-        instructor_id: user.id,
-        department: {
-          id: '1',
-          name: 'Computer Science',
-          code: 'CS'
-        },
-        instructor: {
-          id: user.id,
-          full_name: user.user_metadata?.full_name || 'Instructor',
-          email: user.email
-        },
-        enrollments: [{ count: 0 }],
-        assignments: [{ count: 0 }]
-      }
-    ]
+    // Get all courses from persistent mock storage
+    const courses = getAllCourses()
 
-    return NextResponse.json(mockCourses)
+    // Update instructor info with current user if they created courses
+    const coursesWithUserInfo = courses.map(course => ({
+      ...course,
+      instructor: course.instructor_id === user.id ? {
+        id: user.id,
+        full_name: user.user_metadata?.full_name || 'Instructor',
+        email: user.email || 'instructor@university.edu'
+      } : course.instructor
+    }))
+
+    return NextResponse.json(coursesWithUserInfo)
   } catch (error: any) {
     console.error('Courses API error:', error)
     return NextResponse.json({ 
@@ -89,7 +53,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Create new course (simplified version)
+// POST - Create new course (persistent mock storage)
 export async function POST(request: NextRequest) {
   try {
     // Get the authorization header
@@ -126,38 +90,34 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, code, description, credits, semester, year } = body
+    const { name, code, description, credits, semester, year, department_id } = body
 
-    if (!name || !code || !semester || !year) {
-      return NextResponse.json({ error: 'Name, code, semester, and year are required' }, { status: 400 })
+    if (!name || !code || !semester || !year || !department_id) {
+      return NextResponse.json({ error: 'Name, code, semester, year, and department are required' }, { status: 400 })
     }
 
-    // For now, just return success since we don't have the full database schema
-    const mockCourse = {
-      id: Date.now().toString(),
+    // Add course to persistent mock storage
+    const newCourse = addCourse({
       name,
       code: code.toUpperCase(),
-      description,
+      description: description || '',
       credits: credits || 3,
       semester,
       year: parseInt(year),
-      department_id: null,
-      instructor_id: user.id,
-      department: {
-        id: '1',
-        name: 'Computer Science',
-        code: 'CS'
-      },
-      instructor: {
-        id: user.id,
-        full_name: user.user_metadata?.full_name || 'Instructor',
-        email: user.email
-      }
+      department_id,
+      instructor_id: user.id
+    })
+
+    // Update instructor info with current user
+    newCourse.instructor = {
+      id: user.id,
+      full_name: user.user_metadata?.full_name || 'Instructor',
+      email: user.email || 'instructor@university.edu'
     }
 
     return NextResponse.json({
       message: 'Course created successfully',
-      course: mockCourse
+      course: newCourse
     }, { status: 201 })
   } catch (error: any) {
     console.error('Create course error:', error)

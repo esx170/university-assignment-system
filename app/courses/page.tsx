@@ -114,6 +114,7 @@ export default function CoursesPage() {
   }
 
   const canCreateCourse = currentUser?.role === 'admin' || currentUser?.role === 'instructor'
+  const canViewAllCourses = currentUser?.role === 'admin'
 
   if (loading) {
     return (

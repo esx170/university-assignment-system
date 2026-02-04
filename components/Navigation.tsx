@@ -61,6 +61,7 @@ export default function Navigation({ profile }: NavigationProps) {
       return [
         ...baseItems,
         { name: 'Admin Panel', href: '/admin', icon: Users },
+        { name: 'Departments', href: '/admin/departments', icon: BookOpen },
         { name: 'All Courses', href: '/courses', icon: BookOpen },
         { name: 'All Assignments', href: '/assignments', icon: FileText },
         { name: 'System Settings', href: '/admin/settings', icon: Settings },
