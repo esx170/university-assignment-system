@@ -45,7 +45,7 @@ async function verifyCustomToken(token: string) {
   }
 }
 
-// GET - Get instructor's assigned departments with courses and students (Instructor only)
+// GET - Get students in instructor's department (Instructor only)
 export async function GET(request: NextRequest) {
   try {
     // Get the authorization header
@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // Get instructor's assigned department
+    // Get instructor's department
     let instructorDepartment = null
     if (instructorProfile.department_id) {
       const { data: department, error: deptError } = await supabaseAdmin
@@ -140,50 +140,84 @@ export async function GET(request: NextRequest) {
           department: {
             id: null,
             name: 'No Department Assigned',
-            code: 'N/A',
-            description: 'Please contact administration to assign your department.'
+            code: 'N/A'
           }
         },
-        departments: [],
+        students: [],
         summary: {
-          total_departments: 0,
-          total_courses: 0,
-          total_assigned_courses: 0,
-          total_students: 0
+          total_students: 0,
+          active_students: 0,
+          enrolled_courses: 0
         }
       })
     }
 
-    // Get courses in instructor's department
-    const { data: departmentCourses, error: coursesError } = await supabaseAdmin
-      .from('courses')
-      .select('*')
-      .eq('department_id', instructorDepartment.id)
-      .order('name')
-
-    const courses = departmentCourses || []
-
     // Get students in instructor's department
     const { data: departmentStudents, error: studentsError } = await supabaseAdmin
       .from('profiles')
-      .select('id, full_name, email, student_id')
+      .select(`
+        id,
+        full_name,
+        email,
+        student_id,
+        created_at
+      `)
       .eq('role', 'student')
       .eq('department_id', instructorDepartment.id)
       .order('full_name')
 
+    if (studentsError) {
+      console.error('Students error:', studentsError)
+      return NextResponse.json({ 
+        error: 'Failed to fetch students',
+        details: studentsError.message
+      }, { status: 500 })
+    }
+
     const students = departmentStudents || []
 
-    // Create department assignment with actual data
-    const departmentAssignment = {
-      ...instructorDepartment,
-      is_primary: true,
-      assigned_at: new Date().toISOString(),
-      courses: courses,
-      students: students,
-      course_count: courses.length,
-      student_count: students.length,
-      assigned_course_count: courses.length // For now, assume instructor is assigned to all department courses
+    // Get course enrollments for these students (if course_enrollments table exists)
+    let enrollmentData = {}
+    try {
+      const studentIds = students.map(s => s.id)
+      if (studentIds.length > 0) {
+        const { data: enrollments, error: enrollError } = await supabaseAdmin
+          .from('course_enrollments')
+          .select(`
+            student_id,
+            courses (
+              id,
+              name,
+              code
+            )
+          `)
+          .in('student_id', studentIds)
+
+        if (!enrollError && enrollments) {
+          enrollments.forEach(enrollment => {
+            if (!enrollmentData[enrollment.student_id]) {
+              enrollmentData[enrollment.student_id] = []
+            }
+            enrollmentData[enrollment.student_id].push(enrollment.courses)
+          })
+        }
+      }
+    } catch (error) {
+      console.log('Course enrollments table may not exist, skipping enrollment data')
     }
+
+    // Format student data
+    const formattedStudents = students.map(student => ({
+      id: student.id,
+      name: student.full_name,
+      email: student.email,
+      student_id: student.student_id,
+      department: instructorDepartment.code,
+      enrolled_at: student.created_at,
+      courses: enrollmentData[student.id] || [],
+      course_count: (enrollmentData[student.id] || []).length,
+      status: 'active' // Default status
+    }))
 
     return NextResponse.json({
       instructor: {
@@ -193,20 +227,18 @@ export async function GET(request: NextRequest) {
         department: {
           id: instructorDepartment.id,
           name: instructorDepartment.name,
-          code: instructorDepartment.code,
-          description: instructorDepartment.description || `Welcome to the ${instructorDepartment.name} department.`
+          code: instructorDepartment.code
         }
       },
-      departments: [departmentAssignment],
+      students: formattedStudents,
       summary: {
-        total_departments: 1,
-        total_courses: courses.length,
-        total_assigned_courses: courses.length,
-        total_students: students.length
+        total_students: students.length,
+        active_students: students.length,
+        enrolled_courses: Object.values(enrollmentData).flat().length
       }
     })
   } catch (error: any) {
-    console.error('Instructor departments API error:', error)
+    console.error('Instructor students API error:', error)
     return NextResponse.json({ 
       error: 'Internal server error',
       details: error.message

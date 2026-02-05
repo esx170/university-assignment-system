@@ -93,14 +93,15 @@ export async function GET(request: NextRequest) {
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
 
-    // Get student profile (without department_id since it doesn't exist in current schema)
+    // Get student profile with department information
     const { data: studentProfile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select(`
         id,
         full_name,
         email,
-        student_id
+        student_id,
+        department_id
       `)
       .eq('id', currentUser.id)
       .single()
@@ -113,12 +114,40 @@ export async function GET(request: NextRequest) {
       }, { status: 500 })
     }
 
-    // Since department_id column doesn't exist in current database, provide helpful message
-    const departmentInfo = {
+    // Get department information if department_id exists
+    let departmentInfo = {
       id: null,
-      name: 'Computer Science', // Default department for now
-      code: 'CS',
-      description: 'Department assignment will be available soon.'
+      name: 'No Department Assigned',
+      code: 'N/A',
+      description: 'Please contact administration to assign your department.'
+    }
+
+    if (studentProfile.department_id) {
+      const { data: department, error: deptError } = await supabaseAdmin
+        .from('departments')
+        .select('id, name, code, description')
+        .eq('id', studentProfile.department_id)
+        .single()
+
+      if (department && !deptError) {
+        departmentInfo = {
+          id: department.id,
+          name: department.name,
+          code: department.code,
+          description: department.description || `Welcome to the ${department.name} department.`
+        }
+        console.log(`✅ Found student department: ${department.code} - ${department.name}`)
+      } else {
+        console.log(`❌ Failed to fetch department for ID ${studentProfile.department_id}:`, deptError?.message)
+        departmentInfo = {
+          id: studentProfile.department_id,
+          name: 'Department Not Found',
+          code: 'ERROR',
+          description: 'Your assigned department could not be found. Please contact administration.'
+        }
+      }
+    } else {
+      console.log(`⚠️ Student ${studentProfile.full_name} has no department_id assigned`)
     }
 
     // Get student's enrolled courses
