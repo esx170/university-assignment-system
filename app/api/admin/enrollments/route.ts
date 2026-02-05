@@ -174,10 +174,10 @@ export async function POST(request: NextRequest) {
 
     if (tableCheckError && (tableCheckError.message.includes('does not exist') || tableCheckError.message.includes('schema cache'))) {
       return NextResponse.json({ 
-        error: 'Course enrollments feature not available',
-        details: 'The course_enrollments table does not exist. Please create the table first using the SQL provided in the documentation.',
-        sql: `
-CREATE TABLE course_enrollments (
+        error: 'Course enrollments table not found',
+        details: 'The course_enrollments table needs to be created first.',
+        action: 'create_table',
+        sql: `CREATE TABLE course_enrollments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   student_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   course_id UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
@@ -188,7 +188,20 @@ CREATE TABLE course_enrollments (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(student_id, course_id)
-);`
+);
+
+CREATE INDEX idx_enrollments_student ON course_enrollments(student_id);
+CREATE INDEX idx_enrollments_course ON course_enrollments(course_id);
+CREATE INDEX idx_enrollments_status ON course_enrollments(status);
+
+ALTER TABLE course_enrollments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable all access for authenticated users" ON course_enrollments FOR ALL USING (true);`,
+        instructions: [
+          'Go to your Supabase dashboard',
+          'Navigate to SQL Editor',
+          'Paste the SQL above and execute it',
+          'Return to this page and try enrolling again'
+        ]
       }, { status: 400 })
     }
 

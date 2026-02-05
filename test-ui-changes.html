@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>UI Changes Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .warning { background-color: #fff3cd; border-color: #ffeaa7; }
+    </style>
+</head>
+<body>
+    <h1>🔧 UI Changes Verification</h1>
+    
+    <div class="section success">
+        <h3>✅ Changes Made to app/admin/users/create/page.tsx:</h3>
+        <ul>
+            <li>Course assignment section now shows ALWAYS when "Instructor" role is selected</li>
+            <li>Added better loading states and error messages</li>
+            <li>Added console logging for debugging</li>
+            <li>Improved user experience with loading animations</li>
+        </ul>
+    </div>
+
+    <div class="section warning">
+        <h3>🔄 To See the Changes:</h3>
+        <ol>
+            <li><strong>Hard Refresh Browser:</strong> Ctrl+F5 (Windows) or Cmd+Shift+R (Mac)</li>
+            <li><strong>Clear Browser Cache:</strong> F12 → Application → Storage → Clear site data</li>
+            <li><strong>Check Console:</strong> F12 → Console tab (look for course loading messages)</li>
+            <li><strong>If still not working:</strong> Restart development server</li>
+        </ol>
+    </div>
+
+    <div class="section">
+        <h3>📋 Expected UI Flow:</h3>
+        <ol>
+            <li>Go to Admin → User Management → Create User</li>
+            <li>Select Role: "Instructor"</li>
+            <li><strong>Course assignment section should appear immediately</strong></li>
+            <li>Select Department: Any department</li>
+            <li>Course loading should start (check console for messages)</li>
+            <li>Courses should appear in checkboxes</li>
+        </ol>
+    </div>
+
+    <div class="section">
+        <h3>🐛 If Still Not Working:</h3>
+        <p>The course assignment section should now appear as soon as you select "Instructor" role, even before selecting a department. If it's still not showing:</p>
+        <ul>
+            <li>Check browser console (F12) for JavaScript errors</li>
+            <li>Check if the file was saved properly</li>
+            <li>Try restarting the development server completely</li>
+            <li>Check if there are any TypeScript compilation errors</li>
+        </ul>
+    </div>
+
+    <script>
+        console.log('🎯 UI Changes Test Page Loaded');
+        console.log('📝 Changes made to instructor creation form');
+        console.log('🔄 Please refresh the admin page to see changes');
+    </script>
+</body>
+</html>

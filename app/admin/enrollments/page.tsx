@@ -178,7 +178,14 @@ export default function EnrollmentsPage() {
         await loadEnrollmentData(session.token)
       } else {
         const error = await response.json()
-        alert(`Enrollment failed: ${error.error}`)
+        
+        if (error.action === 'create_table') {
+          // Show detailed error with SQL instructions
+          const message = `${error.error}\n\n${error.details}\n\nTo fix this:\n${error.instructions.join('\n')}\n\nSQL to run:\n${error.sql}`
+          alert(message)
+        } else {
+          alert(`Enrollment failed: ${error.error}`)
+        }
       }
     } catch (error) {
       console.error('Enrollment error:', error)

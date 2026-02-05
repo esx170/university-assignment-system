@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { getCurrentUser, isAdmin } from '@/lib/auth';
 
 import toast from 'react-hot-toast';
-import { ArrowLeft, User, Mail, Key, Building2, GraduationCap } from 'lucide-react';
+import { ArrowLeft, User, Mail, Key, Building2, GraduationCap, BookOpen } from 'lucide-react';
 
 type Department = {
   id: string;
@@ -13,23 +13,41 @@ type Department = {
   code: string;
 };
 
+type Course = {
+  id: string;
+  name: string;
+  code: string;
+  instructor_id: string | null;
+  semester: string;
+  year: number;
+};
+
 export default function CreateUserPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [availableCourses, setAvailableCourses] = useState<Course[]>([]);
+  const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     full_name: '',
     role: 'student' as 'student' | 'instructor' | 'admin',
     student_id: '',
-    department_id: ''
+    department_id: '',
+    assigned_courses: [] as string[]
   });
 
   useEffect(() => {
     checkAuth();
     loadDepartments();
   }, []);
+
+  useEffect(() => {
+    if (formData.role === 'instructor' && formData.department_id) {
+      loadAvailableCourses();
+    }
+  }, [formData.role, formData.department_id]);
 
   const checkAuth = async () => {
     try {
@@ -42,6 +60,31 @@ export default function CreateUserPage() {
     } catch (error) {
       console.error('Auth check error:', error);
       router.push('/auth/signin');
+    }
+  };
+
+  const loadAvailableCourses = async () => {
+    try {
+      console.log('🔍 Loading available courses...');
+      
+      // Use public courses endpoint
+      const response = await fetch('/api/public/courses');
+      
+      console.log(`📡 API Response: ${response.status} ${response.statusText}`);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`✅ Courses loaded: ${data.courses?.length || 0} courses`);
+        const courses = data.courses || [];
+        setAvailableCourses(courses);
+        console.log('📚 Available courses set:', courses.map(c => `${c.code} - ${c.name}`));
+      } else {
+        console.error('❌ Failed to load courses from API');
+        setAvailableCourses([]);
+      }
+    } catch (error) {
+      console.error('❌ Load courses error:', error);
+      setAvailableCourses([]);
     }
   };
 
@@ -156,6 +199,11 @@ export default function CreateUserPage() {
           return;
         }
         requestBody.primary_department_id = formData.department_id;
+        
+        // Add course assignments
+        if (selectedCourses.length > 0) {
+          requestBody.assigned_courses = selectedCourses;
+        }
       }
 
       const response = await fetch('/api/admin/users', {
@@ -189,6 +237,14 @@ export default function CreateUserPage() {
       ...prev,
       [name]: value
     }));
+  };
+
+  const handleCourseSelection = (courseId: string, isSelected: boolean) => {
+    if (isSelected) {
+      setSelectedCourses(prev => [...prev, courseId]);
+    } else {
+      setSelectedCourses(prev => prev.filter(id => id !== courseId));
+    }
   };
 
   return (
@@ -325,26 +381,103 @@ export default function CreateUserPage() {
 
             {/* Department for instructors (required) */}
             {formData.role === 'instructor' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Building2 className="w-4 h-4 inline mr-1" />
-                  Primary Department *
-                </label>
-                <select
-                  name="department_id"
-                  value={formData.department_id}
-                  onChange={handleInputChange}
-                  required={formData.role === 'instructor'}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select Department</option>
-                  {departments.map(dept => (
-                    <option key={dept.id} value={dept.id}>
-                      {dept.code} - {dept.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Building2 className="w-4 h-4 inline mr-1" />
+                    Primary Department *
+                  </label>
+                  <select
+                    name="department_id"
+                    value={formData.department_id}
+                    onChange={handleInputChange}
+                    required={formData.role === 'instructor'}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Select Department</option>
+                    {departments.map(dept => (
+                      <option key={dept.id} value={dept.id}>
+                        {dept.code} - {dept.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Course Assignment for instructors - ALWAYS SHOW when instructor role is selected */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <BookOpen className="w-4 h-4 inline mr-1" />
+                    Assign Courses (Optional)
+                  </label>
+                  <div className="border border-gray-300 rounded-md p-4 max-h-60 overflow-y-auto">
+                    <p className="text-sm text-gray-600 mb-3">
+                      Select courses to assign to this instructor. You can also assign courses later.
+                    </p>
+                    
+                    {/* Show loading state or courses */}
+                    {!formData.department_id ? (
+                      <p className="text-sm text-gray-500 italic">
+                        Please select a department first to load available courses.
+                      </p>
+                    ) : availableCourses.length === 0 ? (
+                      <div className="text-center py-4">
+                        <div className="animate-pulse">
+                          <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                          <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                        </div>
+                        <p className="text-sm text-gray-500 mt-2">Loading courses...</p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          If courses don't load, there may be a connection issue.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {availableCourses.map(course => {
+                          const isCurrentlyAssigned = course.instructor_id && course.instructor_id !== '';
+                          const isSelected = selectedCourses.includes(course.id);
+                          
+                          return (
+                            <div key={course.id} className="flex items-center">
+                              <input
+                                type="checkbox"
+                                id={`course-${course.id}`}
+                                checked={isSelected}
+                                onChange={(e) => handleCourseSelection(course.id, e.target.checked)}
+                                className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                              />
+                              <label 
+                                htmlFor={`course-${course.id}`}
+                                className="flex-1 text-sm text-gray-700"
+                              >
+                                <span className="font-medium">{course.code}</span> - {course.name}
+                                <span className="text-gray-500 ml-2">({course.semester} {course.year})</span>
+                                {isCurrentlyAssigned && !isSelected && (
+                                  <span className="text-amber-600 ml-2">(Currently assigned to another instructor)</span>
+                                )}
+                              </label>
+                            </div>
+                          );
+                        })}
+                        
+                        <div className="mt-3 pt-3 border-t border-gray-200">
+                          <p className="text-xs text-gray-500">
+                            💡 <strong>Note:</strong> You can assign courses that are already assigned to other instructors. 
+                            This will reassign them to the new instructor.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {selectedCourses.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <p className="text-sm font-medium text-gray-700">
+                          Selected courses: {selectedCourses.length}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
             )}
 
             {/* Submit Buttons */}

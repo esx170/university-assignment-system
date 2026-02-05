@@ -253,7 +253,8 @@ export async function POST(request: NextRequest) {
       full_name, 
       role, 
       student_id, 
-      primary_department_id
+      primary_department_id,
+      assigned_courses
     } = body
 
     if (!email || !password || !full_name || !role) {
@@ -335,6 +336,49 @@ export async function POST(request: NextRequest) {
       }, { status: 500 })
     }
 
+    // Handle course assignments for instructors
+    let courseAssignmentResults = []
+    if (role === 'instructor' && assigned_courses && assigned_courses.length > 0) {
+      console.log(`Assigning ${assigned_courses.length} courses to instructor ${full_name}`)
+      
+      for (const courseId of assigned_courses) {
+        try {
+          const { data: updatedCourse, error: courseError } = await supabaseAdmin
+            .from('courses')
+            .update({ instructor_id: userId })
+            .eq('id', courseId)
+            .select('id, name, code')
+            .single()
+
+          if (courseError) {
+            console.error(`Failed to assign course ${courseId}:`, courseError)
+            courseAssignmentResults.push({
+              courseId,
+              success: false,
+              error: courseError.message
+            })
+          } else {
+            console.log(`✅ Assigned course ${updatedCourse.code} to ${full_name}`)
+            courseAssignmentResults.push({
+              courseId,
+              courseName: `${updatedCourse.code} - ${updatedCourse.name}`,
+              success: true
+            })
+          }
+        } catch (error) {
+          console.error(`Error assigning course ${courseId}:`, error)
+          courseAssignmentResults.push({
+            courseId,
+            success: false,
+            error: 'Unexpected error'
+          })
+        }
+      }
+    }
+
+    const successfulAssignments = courseAssignmentResults.filter(r => r.success)
+    const failedAssignments = courseAssignmentResults.filter(r => !r.success)
+
     return NextResponse.json({
       message: 'User created successfully',
       user: {
@@ -345,6 +389,12 @@ export async function POST(request: NextRequest) {
         student_id: student_id || null,
         primary_department_id: departmentColumnExists ? primary_department_id : null,
         note: primary_department_id && !departmentColumnExists ? 'Department assignment skipped - column not available' : null
+      },
+      courseAssignments: {
+        total: courseAssignmentResults.length,
+        successful: successfulAssignments.length,
+        failed: failedAssignments.length,
+        details: courseAssignmentResults
       }
     }, { status: 201 })
   } catch (error: any) {
