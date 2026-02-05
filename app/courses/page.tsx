@@ -113,7 +113,7 @@ export default function CoursesPage() {
     }
   }
 
-  const canCreateCourse = currentUser?.role === 'admin' || currentUser?.role === 'instructor'
+  const canCreateCourse = currentUser?.role === 'admin' // Only admin can create courses
   const canViewAllCourses = currentUser?.role === 'admin'
 
   if (loading) {

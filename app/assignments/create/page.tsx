@@ -5,8 +5,6 @@ import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { assignmentSchema, AssignmentInput } from '@/lib/validations'
-import { getCurrentUser, Profile } from '@/lib/auth'
-import toast from 'react-hot-toast'
 
 interface Course {
   id: string
@@ -14,10 +12,18 @@ interface Course {
   code: string
 }
 
+interface Profile {
+  id: string
+  email: string
+  full_name: string
+  role: string
+}
+
 export default function CreateAssignmentPage() {
   const [loading, setLoading] = useState(false)
   const [courses, setCourses] = useState<Course[]>([])
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [loadingCourses, setLoadingCourses] = useState(true)
   const router = useRouter()
 
   const {
@@ -35,49 +41,119 @@ export default function CreateAssignmentPage() {
   })
 
   useEffect(() => {
-    async function loadData() {
-      try {
-        const user = await getCurrentUser()
-        if (!user || (user.role !== 'instructor' && user.role !== 'admin')) {
-          router.push('/dashboard')
-          return
-        }
+    checkAuthAndLoadData()
+  }, [])
 
-        setProfile(user)
-
-        const response = await fetch('/api/courses')
-        if (response.ok) {
-          const data = await response.json()
-          setCourses(data)
-        }
-      } catch (error) {
-        console.error('Error loading data:', error)
+  const checkAuthAndLoadData = async () => {
+    try {
+      // Check custom session
+      const sessionData = localStorage.getItem('user_session')
+      const userData = localStorage.getItem('user_data')
+      
+      if (!sessionData || !userData) {
+        console.error('No session found, redirecting to signin')
+        router.push('/auth/signin')
+        return
       }
-    }
 
-    loadData()
-  }, [router])
+      const session = JSON.parse(sessionData)
+      const user = JSON.parse(userData)
+      
+      // Check if session is still valid
+      if (new Date(session.expires) <= new Date()) {
+        console.error('Session expired, redirecting to signin')
+        router.push('/auth/signin')
+        return
+      }
+
+      // Check if user is instructor or admin
+      if (user.role !== 'instructor' && user.role !== 'admin' && user.email !== 'admin@university.edu') {
+        console.error('Access denied: Only instructors and administrators can create assignments')
+        router.push('/dashboard')
+        return
+      }
+
+      setProfile({
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role
+      })
+
+      await loadInstructorCourses(session.token, user)
+    } catch (error) {
+      console.error('Auth check error:', error)
+      router.push('/auth/signin')
+    }
+  }
+
+  const loadInstructorCourses = async (authToken: string, user: any) => {
+    try {
+      setLoadingCourses(true)
+      
+      // For instructors, load only their assigned courses
+      // For admins, load all courses
+      let apiUrl = '/api/courses'
+      
+      if (user.role === 'instructor') {
+        // Use a specific endpoint for instructor courses
+        apiUrl = '/api/instructor/courses'
+      }
+
+      const response = await fetch(apiUrl, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        setCourses(data)
+        
+        if (data.length === 0 && user.role === 'instructor') {
+          console.log('No courses assigned to this instructor')
+        }
+      } else {
+        const error = await response.json()
+        console.error('Failed to fetch courses:', error)
+      }
+    } catch (error) {
+      console.error('Error loading courses:', error)
+    } finally {
+      setLoadingCourses(false)
+    }
+  }
 
   const onSubmit = async (data: AssignmentInput) => {
     setLoading(true)
     try {
+      const sessionData = localStorage.getItem('user_session')
+      if (!sessionData) {
+        alert('Authentication required')
+        return
+      }
+
+      const session = JSON.parse(sessionData)
+
       const response = await fetch('/api/assignments', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.token}`
         },
         body: JSON.stringify(data),
       })
 
       if (response.ok) {
-        toast.success('Assignment created successfully!')
+        alert('Assignment created successfully!')
         router.push('/assignments')
       } else {
         const error = await response.json()
-        toast.error(error.error || 'Failed to create assignment')
+        alert(error.error || 'Failed to create assignment')
       }
     } catch (error) {
-      toast.error('Failed to create assignment')
+      alert('Failed to create assignment')
     } finally {
       setLoading(false)
     }
@@ -100,22 +176,31 @@ export default function CreateAssignmentPage() {
 
       <div className="max-w-2xl">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          <div>
-            <label htmlFor="course_id" className="block text-sm font-medium text-gray-700">
-              Course
-            </label>
-            <select {...register('course_id')} className="mt-1 input">
-              <option value="">Select a course</option>
-              {courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.code} - {course.name}
-                </option>
-              ))}
-            </select>
-            {errors.course_id && (
-              <p className="mt-1 text-sm text-red-600">{errors.course_id.message}</p>
-            )}
-          </div>
+            <div>
+              <label htmlFor="course_id" className="block text-sm font-medium text-gray-700">
+                Course
+              </label>
+              {loadingCourses ? (
+                <div className="mt-1 animate-pulse bg-gray-200 h-10 rounded-md"></div>
+              ) : (
+                <select {...register('course_id')} className="mt-1 input">
+                  <option value="">Select a course</option>
+                  {courses.map((course) => (
+                    <option key={course.id} value={course.id}>
+                      {course.code} - {course.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {errors.course_id && (
+                <p className="mt-1 text-sm text-red-600">{errors.course_id.message}</p>
+              )}
+              {!loadingCourses && courses.length === 0 && profile?.role === 'instructor' && (
+                <p className="mt-1 text-sm text-yellow-600">
+                  No courses assigned to you. Please contact an administrator to assign courses to your account.
+                </p>
+              )}
+            </div>
 
           <div>
             <label htmlFor="title" className="block text-sm font-medium text-gray-700">

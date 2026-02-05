@@ -1,11 +1,15 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getCurrentUserWithAuth, Profile, isAdmin } from '@/lib/auth'
-import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import { Settings, Shield, Database, Mail, FileText } from 'lucide-react'
-import toast from 'react-hot-toast'
+
+interface Profile {
+  id: string
+  email: string
+  full_name: string
+  role: string
+}
 
 export default function AdminSettingsPage() {
   const [currentUser, setCurrentUser] = useState<Profile | null>(null)
@@ -27,14 +31,41 @@ export default function AdminSettingsPage() {
 
   const checkAuthAndLoadSettings = async () => {
     try {
-      const user = await getCurrentUserWithAuth()
-      if (!user || !isAdmin(user)) {
-        toast.error('Access denied: Administrator privileges required')
+      // Check custom session
+      const sessionData = localStorage.getItem('user_session')
+      const userData = localStorage.getItem('user_data')
+      
+      if (!sessionData || !userData) {
+        console.error('No session found, redirecting to signin')
+        router.push('/auth/signin')
+        return
+      }
+
+      const session = JSON.parse(sessionData)
+      const user = JSON.parse(userData)
+      
+      // Check if session is still valid
+      if (new Date(session.expires) <= new Date()) {
+        console.error('Session expired, redirecting to signin')
+        router.push('/auth/signin')
+        return
+      }
+
+      // Check if user is admin
+      if (user.role !== 'admin' && user.email !== 'admin@university.edu') {
+        console.error('Access denied: Administrator privileges required')
         router.push('/dashboard')
         return
       }
-      setCurrentUser(user)
-      await loadSettings()
+
+      setCurrentUser({
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role
+      })
+
+      await loadSettings(session.token)
     } catch (error) {
       console.error('Auth check error:', error)
       router.push('/auth/signin')
@@ -43,32 +74,25 @@ export default function AdminSettingsPage() {
     }
   }
 
-  const loadSettings = async () => {
+  const loadSettings = async (authToken: string) => {
     try {
-      // Get the current session token
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
-        throw new Error('No authentication token found')
-      }
-
       const response = await fetch('/api/admin/settings', {
         headers: {
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
         }
       })
-      if (!response.ok) {
-        throw new Error('Failed to load settings')
+      
+      if (response.ok) {
+        const data = await response.json()
+        setSettings(data)
+      } else {
+        console.log('Settings API not available, using defaults')
       }
-      const data = await response.json()
-      setSettings(data)
     } catch (error) {
       console.error('Load settings error:', error)
-      toast.error('Failed to load settings')
+      console.log('Using default settings')
     }
-  }
-
-  const checkAuth = async () => {
-    // This method is now replaced by checkAuthAndLoadSettings
   }
 
   const handleSettingChange = (key: string, value: any) => {
@@ -81,17 +105,18 @@ export default function AdminSettingsPage() {
   const saveSettings = async () => {
     setSaving(true)
     try {
-      // Get the current session token
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
+      const sessionData = localStorage.getItem('user_session')
+      if (!sessionData) {
         throw new Error('No authentication token found')
       }
+
+      const session = JSON.parse(sessionData)
 
       const response = await fetch('/api/admin/settings', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${session.token}`
         },
         body: JSON.stringify({
           allowPublicRegistration: settings.allowPublicRegistration,
@@ -102,17 +127,17 @@ export default function AdminSettingsPage() {
         }),
       })
 
-      if (!response.ok) {
+      if (response.ok) {
+        const data = await response.json()
+        setSettings(data.settings || settings)
+        alert('Settings saved successfully')
+      } else {
         const error = await response.json()
         throw new Error(error.error || 'Failed to save settings')
       }
-
-      const data = await response.json()
-      setSettings(data.settings)
-      toast.success('Settings saved successfully')
     } catch (error: any) {
       console.error('Save settings error:', error)
-      toast.error(error.message || 'Failed to save settings')
+      alert(error.message || 'Failed to save settings')
     } finally {
       setSaving(false)
     }

@@ -40,27 +40,66 @@ export default function AssignmentsPage() {
   const [filter, setFilter] = useState<'all' | 'pending' | 'submitted' | 'graded'>('all')
 
   useEffect(() => {
-    async function loadData() {
-      try {
-        const user = await getCurrentUser()
-        if (!user) return
-
-        setProfile(user)
-
-        const response = await fetch('/api/assignments')
-        if (response.ok) {
-          const data = await response.json()
-          setAssignments(data)
-        }
-      } catch (error) {
-        console.error('Error loading assignments:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadData()
+    checkAuthAndLoadAssignments()
   }, [])
+
+  const checkAuthAndLoadAssignments = async () => {
+    try {
+      // Check custom session first
+      const sessionData = localStorage.getItem('user_session')
+      const userData = localStorage.getItem('user_data')
+      
+      if (sessionData && userData) {
+        const session = JSON.parse(sessionData)
+        const user = JSON.parse(userData)
+        
+        // Check if session is still valid
+        if (new Date(session.expires) > new Date()) {
+          setProfile({
+            id: user.id,
+            email: user.email,
+            full_name: user.full_name,
+            role: user.role,
+            student_id: user.student_id || null,
+            created_at: new Date(),
+            updated_at: new Date()
+          })
+          await loadAssignments(session.token)
+          return
+        }
+      }
+      
+      // If no valid custom session, redirect to signin
+      console.error('No valid session found, redirecting to signin')
+      window.location.href = '/auth/signin'
+    } catch (error) {
+      console.error('Auth check error:', error)
+      window.location.href = '/auth/signin'
+    }
+  }
+
+  const loadAssignments = async (authToken: string) => {
+    try {
+      const response = await fetch('/api/assignments', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        setAssignments(data)
+      } else {
+        const error = await response.json()
+        console.error('Failed to fetch assignments:', error)
+      }
+    } catch (error) {
+      console.error('Error loading assignments:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const getStatusBadge = (assignment: Assignment) => {
     if (profile?.role === 'student') {

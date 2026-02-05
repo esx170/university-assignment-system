@@ -39,6 +39,37 @@ export default function DepartmentManagementPage() {
 
   const checkAuth = async () => {
     try {
+      // Check custom session first
+      const sessionData = localStorage.getItem('user_session')
+      const userData = localStorage.getItem('user_data')
+      
+      if (sessionData && userData) {
+        const session = JSON.parse(sessionData)
+        const user = JSON.parse(userData)
+        
+        // Check if session is still valid
+        if (new Date(session.expires) > new Date()) {
+          if (user.role !== 'admin') {
+            toast.error('Access denied: Administrator privileges required')
+            router.push('/dashboard')
+            return
+          }
+          
+          setCurrentUser({
+            id: user.id,
+            email: user.email,
+            full_name: user.full_name,
+            role: user.role,
+            student_id: user.student_id || null,
+            created_at: new Date(),
+            updated_at: new Date()
+          })
+          await loadDepartments()
+          return
+        }
+      }
+      
+      // Fallback to Supabase auth
       const user = await getCurrentUserWithAuth()
       if (!user || !isAdmin(user)) {
         toast.error('Access denied: Administrator privileges required')
@@ -53,9 +84,37 @@ export default function DepartmentManagementPage() {
     }
   }
 
+  const getAuthToken = async () => {
+    // Get custom session token first
+    const sessionData = localStorage.getItem('user_session')
+    if (sessionData) {
+      const session = JSON.parse(sessionData)
+      if (new Date(session.expires) > new Date()) {
+        return session.token
+      }
+    }
+    
+    // Fallback to Supabase token
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.access_token
+  }
+
   const loadDepartments = async () => {
     try {
-      const response = await fetch('/api/departments')
+      const authToken = await getAuthToken()
+      
+      if (!authToken) {
+        console.error('No authentication token found')
+        toast.error('Authentication required')
+        return
+      }
+
+      const response = await fetch('/api/departments', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      })
       
       if (response.ok) {
         const departmentsData = await response.json()
@@ -80,9 +139,8 @@ export default function DepartmentManagementPage() {
 
     setCreating(true)
     try {
-      // Get the current session token
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
+      const authToken = await getAuthToken()
+      if (!authToken) {
         throw new Error('No authentication token found')
       }
 
@@ -90,7 +148,7 @@ export default function DepartmentManagementPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${authToken}`
         },
         body: JSON.stringify(newDepartment),
       })
@@ -131,9 +189,8 @@ export default function DepartmentManagementPage() {
 
     setUpdating(true)
     try {
-      // Get the current session token
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
+      const authToken = await getAuthToken()
+      if (!authToken) {
         throw new Error('No authentication token found')
       }
 
@@ -141,7 +198,7 @@ export default function DepartmentManagementPage() {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${authToken}`
         },
         body: JSON.stringify({
           id: editingDepartment.id,
@@ -175,16 +232,15 @@ export default function DepartmentManagementPage() {
 
     setDeleting(department.id)
     try {
-      // Get the current session token
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
+      const authToken = await getAuthToken()
+      if (!authToken) {
         throw new Error('No authentication token found')
       }
 
       const response = await fetch(`/api/departments?id=${department.id}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${authToken}`
         }
       })
 

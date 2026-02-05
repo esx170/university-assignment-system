@@ -32,17 +32,48 @@ export default function CreateCoursePage() {
     loadDepartments()
   }, [])
 
+  const getAuthToken = async () => {
+    // Get custom session token first
+    const sessionData = localStorage.getItem('user_session')
+    if (sessionData) {
+      const session = JSON.parse(sessionData)
+      if (new Date(session.expires) > new Date()) {
+        return session.token
+      }
+    }
+    
+    // Fallback to Supabase token
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.access_token
+  }
+
   const loadDepartments = async () => {
     try {
-      const response = await fetch('/api/departments')
+      const authToken = await getAuthToken()
+      if (!authToken) {
+        console.error('No authentication token found')
+        return
+      }
+
+      const response = await fetch('/api/departments', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
       if (response.ok) {
         const data = await response.json()
         setDepartments(data)
+        console.log('Departments loaded:', data.length)
       } else {
-        console.error('Failed to load departments')
+        const error = await response.json()
+        console.error('Failed to load departments:', error)
+        toast.error('Failed to load departments')
       }
     } catch (error) {
       console.error('Error loading departments:', error)
+      toast.error('Error loading departments')
     } finally {
       setLoadingDepartments(false)
     }
@@ -51,17 +82,16 @@ export default function CreateCoursePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!course.department_id) {
-      toast.error('Please select a department')
+    if (!course.name || !course.code) {
+      toast.error('Course name and code are required')
       return
     }
     
     setLoading(true)
 
     try {
-      // Get the current session token
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.access_token) {
+      const authToken = await getAuthToken()
+      if (!authToken) {
         throw new Error('No authentication token found')
       }
 
@@ -69,7 +99,7 @@ export default function CreateCoursePage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${authToken}`
         },
         body: JSON.stringify({
           name: course.name,
@@ -175,12 +205,11 @@ export default function CreateCoursePage() {
                 ) : (
                   <select
                     name="department_id"
-                    required
                     value={course.department_id}
                     onChange={handleChange}
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   >
-                    <option value="">Select department</option>
+                    <option value="">Select department (optional)</option>
                     {departments.map((dept) => (
                       <option key={dept.id} value={dept.id}>
                         {dept.name} ({dept.code})

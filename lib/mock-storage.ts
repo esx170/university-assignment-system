@@ -34,6 +34,27 @@ type Course = {
   assignments: any[]
 }
 
+type Assignment = {
+  id: string
+  course_id: string
+  title: string
+  description: string
+  due_date: string
+  max_points: number
+  allow_late: boolean
+  late_penalty: number
+  file_types: string[]
+  max_file_size: number
+  instructor_id: string
+  created_at: string
+  updated_at: string
+  course?: {
+    id: string
+    name: string
+    code: string
+  }
+}
+
 // In-memory storage for departments
 let mockDepartments: Department[] = [
   {
@@ -119,6 +140,9 @@ let mockCourses: Course[] = [
     assignments: []
   }
 ]
+
+// In-memory storage for assignments
+let mockAssignments: Assignment[] = []
 
 // Department functions
 export function getAllDepartments(): Department[] {
@@ -220,5 +244,99 @@ export function deleteCourse(id: string): boolean {
   if (index === -1) return false
   
   mockCourses.splice(index, 1)
+  return true
+}
+
+// Assignment functions
+export function getAllAssignments(): Assignment[] {
+  return mockAssignments.map(assignment => ({
+    ...assignment,
+    course: getCourseById(assignment.course_id) ? {
+      id: getCourseById(assignment.course_id)!.id,
+      name: getCourseById(assignment.course_id)!.name,
+      code: getCourseById(assignment.course_id)!.code
+    } : undefined
+  }))
+}
+
+export function getAssignmentsByInstructor(instructorId: string): Assignment[] {
+  return mockAssignments.filter(assignment => assignment.instructor_id === instructorId)
+    .map(assignment => ({
+      ...assignment,
+      course: getCourseById(assignment.course_id) ? {
+        id: getCourseById(assignment.course_id)!.id,
+        name: getCourseById(assignment.course_id)!.name,
+        code: getCourseById(assignment.course_id)!.code
+      } : undefined
+    }))
+}
+
+export function getAssignmentsByCourse(courseId: string): Assignment[] {
+  return mockAssignments.filter(assignment => assignment.course_id === courseId)
+    .map(assignment => ({
+      ...assignment,
+      course: getCourseById(assignment.course_id) ? {
+        id: getCourseById(assignment.course_id)!.id,
+        name: getCourseById(assignment.course_id)!.name,
+        code: getCourseById(assignment.course_id)!.code
+      } : undefined
+    }))
+}
+
+export function addAssignment(assignmentData: Omit<Assignment, 'id' | 'created_at' | 'updated_at' | 'course'>): Assignment {
+  // Validate that the course exists
+  const course = getCourseById(assignmentData.course_id)
+  if (!course) {
+    throw new Error('Invalid course ID')
+  }
+
+  const newAssignment: Assignment = {
+    ...assignmentData,
+    id: Date.now().toString(),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    course: {
+      id: course.id,
+      name: course.name,
+      code: course.code
+    }
+  }
+  
+  mockAssignments.push(newAssignment)
+  return newAssignment
+}
+
+export function getAssignmentById(id: string): Assignment | undefined {
+  const assignment = mockAssignments.find(assignment => assignment.id === id)
+  if (!assignment) return undefined
+  
+  const course = getCourseById(assignment.course_id)
+  return {
+    ...assignment,
+    course: course ? {
+      id: course.id,
+      name: course.name,
+      code: course.code
+    } : undefined
+  }
+}
+
+export function updateAssignment(id: string, updates: Partial<Assignment>): Assignment | null {
+  const index = mockAssignments.findIndex(assignment => assignment.id === id)
+  if (index === -1) return null
+  
+  mockAssignments[index] = { 
+    ...mockAssignments[index], 
+    ...updates, 
+    updated_at: new Date().toISOString() 
+  }
+  return mockAssignments[index]
+}
+
+export function deleteAssignment(id: string): boolean {
+  const index = mockAssignments.findIndex(assignment => assignment.id === id)
+  if (index === -1) return false
+  
+  mockAssignments.splice(index, 1)
   return true
 }

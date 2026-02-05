@@ -20,21 +20,64 @@ export function isValidRole(role: unknown): role is 'student' | 'instructor' | '
 
 export async function getCurrentUser(): Promise<Profile | null> {
   try {
-    const { data: { user }, error } = await supabase.auth.getUser()
-    if (error || !user) return null
+    // First, try to get user from our custom session (for users who signed up with working system)
+    if (typeof window !== 'undefined') {
+      const sessionData = localStorage.getItem('user_session')
+      const userData = localStorage.getItem('user_data')
+      
+      if (sessionData && userData) {
+        try {
+          const session = JSON.parse(sessionData)
+          const user = JSON.parse(userData)
+          
+          // Check if session is still valid (not expired)
+          if (new Date(session.expires) > new Date()) {
+            console.log('Using custom session for user:', user.email)
+            return {
+              id: user.id,
+              email: user.email,
+              full_name: user.full_name,
+              role: user.role as 'student' | 'instructor' | 'admin',
+              student_id: user.student_id || null,
+              created_at: new Date(),
+              updated_at: new Date()
+            }
+          } else {
+            // Session expired, clear it
+            console.log('Session expired, clearing localStorage')
+            localStorage.removeItem('user_session')
+            localStorage.removeItem('user_data')
+          }
+        } catch (parseError) {
+          console.error('Error parsing session data:', parseError)
+          // Clear corrupted data
+          localStorage.removeItem('user_session')
+          localStorage.removeItem('user_data')
+        }
+      }
+    }
 
-    // Check if this is the hardcoded admin user
-    const isHardcodedAdmin = user.email === ADMIN_EMAIL
+    // Fallback to Supabase auth (for existing users)
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser()
+      if (error || !user) return null
 
-    // Get user data from Supabase Auth metadata only
-    return {
-      id: user.id,
-      email: user.email || '',
-      full_name: user.user_metadata?.full_name || user.email || '',
-      role: isHardcodedAdmin ? 'admin' : (user.user_metadata?.role as 'student' | 'instructor' | 'admin') || 'student',
-      student_id: user.user_metadata?.student_id || null,
-      created_at: new Date(user.created_at),
-      updated_at: new Date()
+      // Check if this is the hardcoded admin user
+      const isHardcodedAdmin = user.email === ADMIN_EMAIL
+
+      // Get user data from Supabase Auth metadata only
+      return {
+        id: user.id,
+        email: user.email || '',
+        full_name: user.user_metadata?.full_name || user.email || '',
+        role: isHardcodedAdmin ? 'admin' : (user.user_metadata?.role as 'student' | 'instructor' | 'admin') || 'student',
+        student_id: user.user_metadata?.student_id || null,
+        created_at: new Date(user.created_at),
+        updated_at: new Date()
+      }
+    } catch (supabaseError) {
+      console.log('Supabase auth not available (expected for custom auth users)')
+      return null
     }
   } catch (error) {
     console.error('Error getting current user:', error)
@@ -42,7 +85,7 @@ export async function getCurrentUser(): Promise<Profile | null> {
   }
 }
 
-// Public signup - only for students
+// Public signup - only for students (RESTORED ORIGINAL METHOD)
 export async function signUp(email: string, password: string, userData: {
   full_name: string
   student_id: string
@@ -54,7 +97,9 @@ export async function signUp(email: string, password: string, userData: {
       throw new Error('This email address is reserved for system administration')
     }
 
-    // Force role to be 'student' for public signup
+    // Use the original simple method that worked before
+    console.log('Using original simple signup method...')
+    
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -156,8 +201,22 @@ export async function signIn(email: string, password: string) {
 }
 
 export async function signOut() {
-  const { error } = await supabase.auth.signOut()
-  if (error) throw error
+  // Clear custom session data
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('user_session')
+    localStorage.removeItem('user_data')
+    localStorage.removeItem('emergency_session')
+    localStorage.removeItem('emergency_user')
+    localStorage.removeItem('emergency_auth')
+  }
+
+  // Also try to sign out from Supabase (for fallback users)
+  try {
+    const { error } = await supabase.auth.signOut()
+    if (error) console.log('Supabase signout error (expected for custom auth users):', error.message)
+  } catch (error) {
+    console.log('Supabase signout failed (expected for custom auth users)')
+  }
 }
 
 export function hasRole(profile: Profile | null, allowedRoles: ('student' | 'instructor' | 'admin')[]): boolean {

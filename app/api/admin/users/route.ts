@@ -1,103 +1,205 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+// Helper function to verify custom session token
+async function verifyCustomToken(token: string) {
+  try {
+    // Decode our custom token (format: base64(userId:timestamp))
+    const decoded = Buffer.from(token, 'base64').toString('utf-8')
+    const [userId, timestamp] = decoded.split(':')
+    
+    if (!userId || !timestamp) {
+      return null
+    }
+
+    // Check if token is not too old (24 hours)
+    const tokenTime = parseInt(timestamp)
+    const now = Date.now()
+    const maxAge = 24 * 60 * 60 * 1000 // 24 hours
+    
+    if (now - tokenTime > maxAge) {
+      return null // Token expired
+    }
+
+    // Get user from profiles table
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    )
+
+    const { data: user, error } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single()
+
+    if (error || !user) {
+      return null
+    }
+
+    return user
+  } catch (error) {
+    console.error('Token verification error:', error)
+    return null
+  }
+}
+
 // GET - List all users (Admin only)
 export async function GET(request: NextRequest) {
   try {
-    console.log('Admin users API called')
-    
     // Get the authorization header
     const authHeader = request.headers.get('authorization')
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.log('No authorization header found')
       return NextResponse.json({ error: 'Unauthorized: No authentication token provided' }, { status: 401 })
     }
 
-    const token = authHeader.substring(7) // Remove 'Bearer ' prefix
+    const token = authHeader.substring(7)
 
-    // Create admin client directly
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-    console.log('Environment check:', {
-      hasUrl: !!supabaseUrl,
-      hasServiceKey: !!supabaseServiceKey,
-      urlPrefix: supabaseUrl?.substring(0, 20)
-    })
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      console.error('Missing environment variables')
-      return NextResponse.json({ 
-        error: 'Server configuration error',
-        details: 'Missing Supabase environment variables'
-      }, { status: 500 })
-    }
-
-    // Create client with the user's token
-    const supabaseClient = createClient(supabaseUrl, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      }
-    })
-
-    // Verify the user with their token
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
+    // Try to verify custom token first
+    let currentUser = await verifyCustomToken(token)
     
-    if (userError || !user) {
-      console.log('Invalid token or user not found')
-      return NextResponse.json({ error: 'Unauthorized: Invalid authentication token' }, { status: 401 })
-    }
+    if (!currentUser) {
+      // Fallback to Supabase token verification
+      const supabaseClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+        global: { headers: { Authorization: `Bearer ${token}` } }
+      })
 
-    console.log('Authenticated user:', user.email)
+      const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
+      
+      if (userError || !user) {
+        return NextResponse.json({ error: 'Unauthorized: Invalid authentication token' }, { status: 401 })
+      }
+
+      // Convert Supabase user to our format
+      currentUser = {
+        id: user.id,
+        email: user.email || '',
+        full_name: user.user_metadata?.full_name || user.email || '',
+        role: user.email === 'admin@university.edu' ? 'admin' : (user.user_metadata?.role || 'student'),
+        student_id: user.user_metadata?.student_id || null
+      }
+    }
 
     // Check if user is admin
-    const isHardcodedAdmin = user.email === 'admin@university.edu'
-    const userRole = isHardcodedAdmin ? 'admin' : (user.user_metadata?.role || 'student')
-
-    if (!isHardcodedAdmin && userRole !== 'admin') {
-      console.log('Access denied - not admin')
-      return NextResponse.json({ error: 'Unauthorized: Only administrators can access this' }, { status: 403 })
+    if (currentUser.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized: Only administrators can view all users' }, { status: 403 })
     }
 
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      }
-    })
+    // Create admin client for data access
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    )
 
-    console.log('Fetching users from Supabase...')
-    const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers()
+    // Get all profiles
+    const { data: profiles, error: profilesError } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .order('full_name')
 
-    if (error) {
-      console.error('Supabase error:', error)
+    if (profilesError) {
+      console.error('Profiles query error:', profilesError)
       return NextResponse.json({ 
-        error: 'Failed to fetch users from database',
-        details: error.message
+        error: 'Failed to fetch users from profiles table',
+        details: profilesError.message
       }, { status: 500 })
     }
 
-    console.log(`Found ${users.length} users`)
+    // If no profiles exist, return empty array
+    if (!profiles || profiles.length === 0) {
+      return NextResponse.json([])
+    }
 
-    // Format user data for admin dashboard
-    const formattedUsers = users.map(user => ({
-      id: user.id,
-      email: user.email,
-      full_name: user.user_metadata?.full_name || '',
-      role: user.email === 'admin@university.edu' ? 'admin' : (user.user_metadata?.role || 'student'),
-      student_id: user.user_metadata?.student_id || null,
-      email_confirmed: user.email_confirmed_at !== null,
-      created_at: user.created_at,
-      last_sign_in: user.last_sign_in_at,
-      is_system_admin: user.email === 'admin@university.edu'
-    }))
+    // Add department info and related data for each profile
+    const profilesWithDepartments = await Promise.all(
+      profiles.map(async (profile) => {
+        let department = null
+        let assignedCourses: any[] = []
+        let enrolledCourses: any[] = []
+        let assignments: any[] = []
+        
+        // Only try to get department if department_id column exists
+        if (profile.department_id) {
+          try {
+            const { data: dept } = await supabaseAdmin
+              .from('departments')
+              .select('id, name, code')
+              .eq('id', profile.department_id)
+              .single()
+            
+            department = dept
+          } catch (error) {
+            console.log('Department lookup failed for profile:', profile.id)
+          }
+        }
 
-    console.log('Returning formatted users')
-    return NextResponse.json(formattedUsers)
+        // Get courses for instructors
+        if (profile.role === 'instructor') {
+          try {
+            const { data: courses } = await supabaseAdmin
+              .from('courses')
+              .select('id, name, code, semester, year')
+              .limit(5) // Limit to avoid too much data
+            
+            assignedCourses = courses || []
+          } catch (error) {
+            console.log('Courses lookup failed for instructor:', profile.id)
+          }
+        }
+
+        // Get enrolled courses for students
+        if (profile.role === 'student') {
+          try {
+            // Check if course_enrollments table exists
+            const { data: enrollments, error: enrollError } = await supabaseAdmin
+              .from('course_enrollments')
+              .select(`
+                courses (
+                  id, name, code, semester, year
+                )
+              `)
+              .eq('student_id', profile.id)
+              .limit(5)
+
+            if (!enrollError && enrollments) {
+              enrolledCourses = enrollments.map(e => e.courses).filter(Boolean)
+            }
+          } catch (error) {
+            console.log('Enrollments lookup failed for student:', profile.id)
+          }
+        }
+
+        // Get assignments for instructors
+        if (profile.role === 'instructor') {
+          try {
+            const { data: userAssignments } = await supabaseAdmin
+              .from('assignments')
+              .select('id, title, due_date, max_points')
+              .limit(5) // Limit to avoid too much data
+            
+            assignments = userAssignments || []
+          } catch (error) {
+            console.log('Assignments lookup failed for instructor:', profile.id)
+          }
+        }
+
+        return {
+          ...profile,
+          is_active: profile.is_active !== undefined ? profile.is_active : true, // Default to active if column doesn't exist
+          primary_department: department,
+          assigned_departments: department ? [department] : [],
+          assigned_courses: assignedCourses,
+          enrolled_courses: enrolledCourses,
+          assignments: assignments
+        }
+      })
+    )
+
+    return NextResponse.json(profilesWithDepartments)
   } catch (error: any) {
-    console.error('Admin list users error:', error)
+    console.error('Users API error:', error)
     return NextResponse.json({ 
       error: 'Internal server error',
       details: error.message
@@ -105,7 +207,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Create new user (Admin only)
+// POST - Create new user with department assignments (Admin only)
 export async function POST(request: NextRequest) {
   try {
     // Get the authorization header
@@ -114,87 +216,142 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized: No authentication token provided' }, { status: 401 })
     }
 
-    const token = authHeader.substring(7) // Remove 'Bearer ' prefix
+    const token = authHeader.substring(7)
 
-    // Create client with the user's token
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseClient = createClient(supabaseUrl!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      }
-    })
-
-    // Verify the user with their token
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
+    // Try to verify custom token first
+    let currentUser = await verifyCustomToken(token)
     
-    if (userError || !user) {
-      return NextResponse.json({ error: 'Unauthorized: Invalid authentication token' }, { status: 401 })
+    if (!currentUser) {
+      // Fallback to Supabase token verification
+      const supabaseClient = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+        global: { headers: { Authorization: `Bearer ${token}` } }
+      })
+
+      const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token)
+      
+      if (userError || !user) {
+        return NextResponse.json({ error: 'Unauthorized: Invalid authentication token' }, { status: 401 })
+      }
+
+      // Convert Supabase user to our format
+      currentUser = {
+        id: user.id,
+        email: user.email || '',
+        role: user.email === 'admin@university.edu' ? 'admin' : (user.user_metadata?.role || 'student')
+      }
     }
 
     // Check if user is admin
-    const isHardcodedAdmin = user.email === 'admin@university.edu'
-    const userRole = isHardcodedAdmin ? 'admin' : (user.user_metadata?.role || 'student')
-
-    if (!isHardcodedAdmin && userRole !== 'admin') {
+    if (currentUser.role !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized: Only administrators can create users' }, { status: 403 })
     }
 
     const body = await request.json()
-    const { email, password, full_name, role, student_id } = body
+    const { 
+      email, 
+      password, 
+      full_name, 
+      role, 
+      student_id, 
+      primary_department_id
+    } = body
 
-    // Prevent creating another admin
-    if (role === 'admin') {
-      return NextResponse.json({ error: 'Cannot create additional admin users. Only one system administrator is allowed.' }, { status: 400 })
+    if (!email || !password || !full_name || !role) {
+      return NextResponse.json({ error: 'Email, password, full name, and role are required' }, { status: 400 })
     }
 
-    // Prevent using the admin email
-    if (email === 'admin@university.edu') {
-      return NextResponse.json({ error: 'This email address is reserved for system administration' }, { status: 400 })
+    if (!['student', 'instructor', 'admin'].includes(role)) {
+      return NextResponse.json({ error: 'Invalid role. Must be student, instructor, or admin' }, { status: 400 })
     }
 
-    // Create admin client directly
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (role === 'student' && !student_id) {
+      return NextResponse.json({ error: 'Student ID is required for students' }, { status: 400 })
+    }
 
-    if (!supabaseUrl || !supabaseServiceKey) {
-      return NextResponse.json({ 
-        error: 'Server configuration error'
+    // Create admin client
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    )
+
+    // Check if user already exists
+    const { data: existingUser } = await supabaseAdmin
+      .from('profiles')
+      .select('email')
+      .eq('email', email)
+      .single()
+
+    if (existingUser) {
+      return NextResponse.json({ error: 'User with this email already exists' }, { status: 400 })
+    }
+
+    // Create user directly in profiles table (using our working method)
+    const userId = crypto.randomUUID()
+    
+    const profileData: any = {
+      id: userId,
+      email,
+      full_name,
+      role,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+
+    // Only add student_id if provided and not empty
+    if (student_id && student_id.trim()) {
+      profileData.student_id = student_id.trim()
+    }
+
+    // Only try to set department_id if the column exists
+    let departmentColumnExists = false
+    if (primary_department_id) {
+      // Test if department_id column exists by doing a harmless select
+      const { error: testError } = await supabaseAdmin
+        .from('profiles')
+        .select('department_id')
+        .limit(1)
+      
+      if (!testError) {
+        // Column exists
+        departmentColumnExists = true
+        profileData.department_id = primary_department_id
+      } else {
+        console.log('department_id column does not exist, skipping department assignment')
+      }
+    }
+
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .insert(profileData)
+      .select()
+      .single()
+
+    if (profileError) {
+      console.error('Profile creation failed:', profileError)
+      return NextResponse.json({
+        error: 'Failed to create user account',
+        details: profileError.message
       }, { status: 500 })
     }
 
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      }
-    })
-
-    const { data, error } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      user_metadata: {
-        full_name,
-        role: role || 'student',
-        student_id: student_id || null
-      },
-      email_confirm: true
-    })
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
     return NextResponse.json({
-      message: `${role || 'student'} account created successfully`,
+      message: 'User created successfully',
       user: {
-        id: data.user?.id,
-        email: data.user?.email,
-        role: role || 'student'
+        id: userId,
+        email,
+        full_name,
+        role,
+        student_id: student_id || null,
+        primary_department_id: departmentColumnExists ? primary_department_id : null,
+        note: primary_department_id && !departmentColumnExists ? 'Department assignment skipped - column not available' : null
       }
     }, { status: 201 })
   } catch (error: any) {
-    console.error('Admin create user error:', error)
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
+    console.error('Create user error:', error)
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error.message
+    }, { status: 500 })
   }
 }

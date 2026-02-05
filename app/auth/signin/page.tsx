@@ -24,13 +24,35 @@ export default function SignInPage() {
   const onSubmit = async (data: SignInInput) => {
     setLoading(true)
     try {
-      await signIn(data.email, data.password)
-      toast.success('Signed in successfully!')
-      router.push('/dashboard')
-      router.refresh()
+      // Use the working signin API
+      const response = await fetch('/api/auth/signin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password
+        })
+      })
+
+      const result = await response.json()
+
+      if (response.ok) {
+        toast.success('Signed in successfully!')
+        // Store session info
+        if (result.session) {
+          localStorage.setItem('user_session', JSON.stringify(result.session))
+          localStorage.setItem('user_data', JSON.stringify(result.user))
+        }
+        router.push('/dashboard')
+        router.refresh()
+      } else {
+        toast.error(result.error || 'Failed to sign in')
+      }
     } catch (error: any) {
       console.error('Signin error:', error)
-      toast.error(error.message || 'Invalid email or password')
+      toast.error('Failed to sign in. Please try again.')
     } finally {
       setLoading(false)
     }

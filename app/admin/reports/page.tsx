@@ -1,11 +1,16 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getCurrentUserWithAuth, Profile, isAdmin } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import { FileText, Users, BookOpen, TrendingUp } from 'lucide-react'
-import toast from 'react-hot-toast'
+
+interface Profile {
+  id: string
+  email: string
+  full_name: string
+  role: string
+}
 
 export default function AdminReportsPage() {
   const [currentUser, setCurrentUser] = useState<Profile | null>(null)
@@ -34,13 +39,39 @@ export default function AdminReportsPage() {
 
   const checkAuth = async () => {
     try {
-      const user = await getCurrentUserWithAuth()
-      if (!user || !isAdmin(user)) {
-        toast.error('Access denied: Administrator privileges required')
+      // Check custom session
+      const sessionData = localStorage.getItem('user_session')
+      const userData = localStorage.getItem('user_data')
+      
+      if (!sessionData || !userData) {
+        console.error('No session found, redirecting to signin')
+        router.push('/auth/signin')
+        return
+      }
+
+      const session = JSON.parse(sessionData)
+      const user = JSON.parse(userData)
+      
+      // Check if session is still valid
+      if (new Date(session.expires) <= new Date()) {
+        console.error('Session expired, redirecting to signin')
+        router.push('/auth/signin')
+        return
+      }
+
+      // Check if user is admin
+      if (user.role !== 'admin' && user.email !== 'admin@university.edu') {
+        console.error('Access denied: Administrator privileges required')
         router.push('/dashboard')
         return
       }
-      setCurrentUser(user)
+
+      setCurrentUser({
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role
+      })
     } catch (error) {
       console.error('Auth check error:', error)
       router.push('/auth/signin')

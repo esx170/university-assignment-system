@@ -11,7 +11,10 @@ import {
   Bell, 
   LogOut,
   Menu,
-  X
+  X,
+  Building2,
+  GraduationCap,
+  ClipboardList
 } from 'lucide-react'
 import { getCurrentUser, signOut, Profile } from '@/lib/auth'
 import toast from 'react-hot-toast'
@@ -42,28 +45,33 @@ export default function Navigation({ profile }: NavigationProps) {
     if (profile?.role === 'student') {
       return [
         ...baseItems,
-        { name: 'My Courses', href: '/courses', icon: BookOpen },
-        { name: 'Assignments', href: '/assignments', icon: FileText },
-        { name: 'My Submissions', href: '/submissions', icon: FileText },
+        { name: 'My Department', href: '/student/department', icon: Building2 },
+        { name: 'My Courses', href: '/student/courses', icon: BookOpen },
+        { name: 'Assignments', href: '/student/assignments', icon: FileText },
+        { name: 'My Submissions', href: '/student/submissions', icon: ClipboardList },
       ]
     }
 
     if (profile?.role === 'instructor') {
       return [
         ...baseItems,
-        { name: 'My Courses', href: '/courses', icon: BookOpen },
-        { name: 'Assignments', href: '/assignments', icon: FileText },
-        { name: 'Grading', href: '/grading', icon: FileText },
+        { name: 'My Departments', href: '/instructor/departments', icon: Building2 },
+        { name: 'My Courses', href: '/instructor/courses', icon: BookOpen },
+        { name: 'Assignments', href: '/instructor/assignments', icon: FileText },
+        { name: 'Grading', href: '/instructor/grading', icon: GraduationCap },
+        { name: 'Students', href: '/instructor/students', icon: Users },
       ]
     }
 
     if (profile?.role === 'admin') {
       return [
         ...baseItems,
-        { name: 'Admin Panel', href: '/admin', icon: Users },
-        { name: 'Departments', href: '/admin/departments', icon: BookOpen },
-        { name: 'All Courses', href: '/courses', icon: BookOpen },
-        { name: 'All Assignments', href: '/assignments', icon: FileText },
+        { name: 'User Management', href: '/admin/users', icon: Users },
+        { name: 'Departments', href: '/admin/departments', icon: Building2 },
+        { name: 'Courses', href: '/admin/courses', icon: BookOpen },
+        { name: 'Assignments', href: '/admin/assignments', icon: FileText },
+        { name: 'Enrollments', href: '/admin/enrollments', icon: ClipboardList },
+        { name: 'Reports', href: '/admin/reports', icon: FileText },
         { name: 'System Settings', href: '/admin/settings', icon: Settings },
       ]
     }
