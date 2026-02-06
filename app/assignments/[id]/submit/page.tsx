@@ -48,7 +48,23 @@ export default function SubmitAssignmentPage({ params }: SubmitAssignmentPagePro
 
         setProfile(user)
 
-        const response = await fetch(`/api/assignments/${params.id}`)
+        // Get session token for API call
+        const sessionData = localStorage.getItem('user_session')
+        if (!sessionData) {
+          toast.error('Authentication required')
+          router.push('/auth/signin')
+          return
+        }
+
+        const session = JSON.parse(sessionData)
+
+        const response = await fetch(`/api/assignments/${params.id}`, {
+          headers: {
+            'Authorization': `Bearer ${session.token}`,
+            'Content-Type': 'application/json'
+          }
+        })
+        
         if (response.ok) {
           const data = await response.json()
           setAssignment(data)
@@ -72,12 +88,25 @@ export default function SubmitAssignmentPage({ params }: SubmitAssignmentPagePro
 
     setSubmitting(true)
     try {
+      // Get session token
+      const sessionData = localStorage.getItem('user_session')
+      if (!sessionData) {
+        toast.error('Authentication required')
+        router.push('/auth/signin')
+        return
+      }
+
+      const session = JSON.parse(sessionData)
+
       const formData = new FormData()
       formData.append('assignment_id', assignment.id)
       formData.append('file', selectedFile)
 
       const response = await fetch('/api/submissions', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session.token}`
+        },
         body: formData,
       })
 

@@ -91,16 +91,88 @@ export async function GET(request: NextRequest) {
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
 
-    // For now, return empty assignments since we don't have course enrollments set up
-    // In a real system, you would:
-    // 1. Get courses the student is enrolled in
-    // 2. Get assignments for those courses
-    // 3. Include submission status for each assignment
+    // Get courses the student is enrolled in
+    let enrolledCourseIds: string[] = []
+    
+    try {
+      const { data: enrollments, error: enrollError } = await supabaseAdmin
+        .from('course_enrollments')
+        .select('course_id')
+        .eq('student_id', currentUser.id)
+        .eq('status', 'active')
 
-    // Placeholder response for now
-    const assignments: any[] = []
+      if (enrollError) {
+        // If enrollments table doesn't exist yet, return empty array with helpful message
+        if (enrollError.message.includes('does not exist') || enrollError.message.includes('schema cache')) {
+          return NextResponse.json({
+            assignments: [],
+            message: 'No enrollments found. Please contact your administrator to enroll you in courses.',
+            note: 'The enrollment system needs to be set up first.'
+          })
+        }
+        throw enrollError
+      }
 
-    return NextResponse.json(assignments)
+      enrolledCourseIds = enrollments?.map(e => e.course_id) || []
+    } catch (error: any) {
+      console.error('Error fetching enrollments:', error)
+      return NextResponse.json({
+        assignments: [],
+        message: 'Unable to load enrollments. Please contact your administrator.',
+        error: error.message
+      })
+    }
+
+    // If student is not enrolled in any courses, return empty array
+    if (enrolledCourseIds.length === 0) {
+      return NextResponse.json({
+        assignments: [],
+        message: 'You are not enrolled in any courses yet. Please contact your administrator.'
+      })
+    }
+
+    // Get assignments for enrolled courses
+    const { data: assignments, error: assignmentsError } = await supabaseAdmin
+      .from('assignments')
+      .select(`
+        *,
+        courses (
+          id,
+          name,
+          code
+        )
+      `)
+      .in('course_id', enrolledCourseIds)
+      .order('due_date', { ascending: true })
+
+    if (assignmentsError) {
+      console.error('Assignments error:', assignmentsError)
+      return NextResponse.json({ 
+        error: 'Failed to fetch assignments',
+        details: assignmentsError.message
+      }, { status: 500 })
+    }
+
+    // Get submission status for each assignment
+    const assignmentsWithStatus = await Promise.all(
+      (assignments || []).map(async (assignment) => {
+        const { data: submissions } = await supabaseAdmin
+          .from('submissions')
+          .select('id, submitted_at, grade, grade_percentage, feedback, status')
+          .eq('assignment_id', assignment.id)
+          .eq('student_id', currentUser.id)
+
+        return {
+          ...assignment,
+          submissions: submissions || [],
+          submission_status: submissions && submissions.length > 0 ? 'submitted' : 'pending',
+          submitted_at: submissions && submissions.length > 0 ? submissions[0].submitted_at : null,
+          grade: submissions && submissions.length > 0 ? submissions[0].grade : null
+        }
+      })
+    )
+
+    return NextResponse.json(assignmentsWithStatus)
   } catch (error: any) {
     console.error('Student assignments API error:', error)
     return NextResponse.json({ 

@@ -104,6 +104,11 @@ export default function StudentSubmissionsPage() {
     return { status: 'submitted', color: 'text-blue-600', bgColor: 'bg-blue-100' }
   }
 
+  const calculatePercentage = (grade: number, maxPoints: number) => {
+    if (!grade || !maxPoints) return null
+    return ((grade / maxPoints) * 100).toFixed(1)
+  }
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -211,15 +216,15 @@ export default function StudentSubmissionsPage() {
                       </div>
                     )}
 
-                    {submission.grade !== null && (
+                      {submission.grade !== null && (
                       <div className="bg-green-50 rounded-lg p-4 mb-4">
                         <div className="flex items-center justify-between mb-2">
                           <h4 className="font-medium text-gray-900">Grade</h4>
                           <div className={`text-lg font-bold ${getGradeColor(submission.grade, submission.assignments.max_points)}`}>
                             {submission.grade}/{submission.assignments.max_points}
-                            {submission.grade_percentage && (
+                            {(submission.grade_percentage || calculatePercentage(submission.grade, submission.assignments.max_points)) && (
                               <span className="text-sm ml-2">
-                                ({submission.grade_percentage.toFixed(1)}%)
+                                ({submission.grade_percentage?.toFixed(1) || calculatePercentage(submission.grade, submission.assignments.max_points)}%)
                               </span>
                             )}
                           </div>

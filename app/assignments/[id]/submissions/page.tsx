@@ -1,25 +1,21 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getCurrentUser, Profile } from '@/lib/auth'
-import { useRouter } from 'next/navigation'
+import { useRouter, useParams } from 'next/navigation'
 import { 
-  GraduationCap, 
   FileText, 
-  Users, 
-  BookOpen,
-  Clock,
-  CheckCircle,
-  AlertCircle,
+  ArrowLeft,
   Download,
-  Eye,
   Calendar,
+  CheckCircle,
+  Clock,
+  AlertCircle,
   Save,
   X
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-type Submission = {
+interface Submission {
   id: string
   submitted_at: string
   grade: number | null
@@ -30,98 +26,91 @@ type Submission = {
   file_name: string | null
   file_url: string | null
   is_late: boolean
-  assignments: {
-    id: string
-    title: string
-    max_points: number
-    due_date: string
-    courses: {
-      id: string
-      name: string
-      code: string
-    }
-  }
   student: {
     full_name: string
     student_id: string
   }
 }
 
-export default function InstructorGradingPage() {
-  const [currentUser, setCurrentUser] = useState<Profile | null>(null)
-  const [loading, setLoading] = useState(true)
+interface Assignment {
+  id: string
+  title: string
+  max_points: number
+  courses: {
+    name: string
+    code: string
+  }
+}
+
+export default function AssignmentSubmissionsPage() {
+  const [assignment, setAssignment] = useState<Assignment | null>(null)
   const [submissions, setSubmissions] = useState<Submission[]>([])
+  const [loading, setLoading] = useState(true)
   const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
   const [gradeValue, setGradeValue] = useState<string>('')
   const [feedbackValue, setFeedbackValue] = useState<string>('')
   const [saving, setSaving] = useState(false)
-  const [filter, setFilter] = useState<'all' | 'pending' | 'graded'>('pending')
   const router = useRouter()
+  const params = useParams()
+  const assignmentId = params.id as string
 
   useEffect(() => {
-    checkAuth()
-  }, [])
+    loadData()
+  }, [assignmentId])
 
-  const checkAuth = async () => {
-    try {
-      const user = await getCurrentUser()
-      if (!user) {
-        router.push('/auth/signin')
-        return
-      }
-
-      if (user.role !== 'instructor' && user.role !== 'admin') {
-        toast.error('Access denied: Instructor privileges required')
-        router.push('/dashboard')
-        return
-      }
-
-      setCurrentUser(user)
-      await loadSubmissions()
-    } catch (error) {
-      console.error('Auth check error:', error)
-      router.push('/auth/signin')
-    }
-  }
-
-  const loadSubmissions = async () => {
+  const loadData = async () => {
     try {
       const sessionData = localStorage.getItem('user_session')
       if (!sessionData) {
         toast.error('Authentication required')
+        router.push('/auth/signin')
         return
       }
 
       const session = JSON.parse(sessionData)
 
-      const response = await fetch('/api/submissions', {
+      // Load assignment details
+      const assignmentResponse = await fetch(`/api/assignments/${assignmentId}`, {
         headers: {
           'Authorization': `Bearer ${session.token}`,
           'Content-Type': 'application/json'
         }
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        setSubmissions(data)
+      if (assignmentResponse.ok) {
+        const assignmentData = await assignmentResponse.json()
+        setAssignment(assignmentData)
+      }
+
+      // Load submissions
+      const submissionsResponse = await fetch(`/api/submissions?assignmentId=${assignmentId}`, {
+        headers: {
+          'Authorization': `Bearer ${session.token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (submissionsResponse.ok) {
+        const submissionsData = await submissionsResponse.json()
+        setSubmissions(submissionsData)
       } else {
-        const error = await response.json()
+        const error = await submissionsResponse.json()
         toast.error(error.error || 'Failed to load submissions')
       }
     } catch (error) {
-      console.error('Error loading submissions:', error)
-      toast.error('Failed to load submissions')
+      console.error('Error loading data:', error)
+      toast.error('Failed to load data')
     } finally {
       setLoading(false)
     }
   }
 
   const handleGradeSubmission = async () => {
-    if (!selectedSubmission) return
+    if (!selectedSubmission || !assignment) return
 
     const grade = parseFloat(gradeValue)
-    if (isNaN(grade) || grade < 0 || grade > selectedSubmission.assignments.max_points) {
-      toast.error(`Grade must be between 0 and ${selectedSubmission.assignments.max_points}`)
+    if (isNaN(grade) || grade < 0 || grade > assignment.max_points) {
+      toast.error(`Grade must be between 0 and ${assignment.max_points}`)
       return
     }
 
@@ -153,7 +142,7 @@ export default function InstructorGradingPage() {
         setSelectedSubmission(null)
         setGradeValue('')
         setFeedbackValue('')
-        await loadSubmissions()
+        await loadData()
       } else {
         const error = await response.json()
         toast.error(error.error || 'Failed to save grade')
@@ -188,19 +177,6 @@ export default function InstructorGradingPage() {
     })
   }
 
-  const filteredSubmissions = submissions.filter(sub => {
-    if (filter === 'pending') return sub.grade === null
-    if (filter === 'graded') return sub.grade !== null
-    return true
-  })
-
-  const stats = {
-    total: submissions.length,
-    pending: submissions.filter(s => s.grade === null).length,
-    graded: submissions.filter(s => s.grade !== null).length,
-    late: submissions.filter(s => s.is_late).length
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -217,14 +193,28 @@ export default function InstructorGradingPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Grading Center</h1>
-          <p className="mt-2 text-gray-600">
-            Review and grade student submissions
-          </p>
+          <button
+            onClick={() => router.push(`/assignments/${assignmentId}`)}
+            className="flex items-center text-gray-600 hover:text-gray-900 mb-4"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Assignment
+          </button>
+          
+          {assignment && (
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                Submissions: {assignment.title}
+              </h1>
+              <p className="text-gray-600">
+                {assignment.courses.code} • {assignment.max_points} points
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        {/* Statistics */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white overflow-hidden shadow rounded-lg">
             <div className="p-5">
               <div className="flex items-center">
@@ -237,7 +227,7 @@ export default function InstructorGradingPage() {
                       Total Submissions
                     </dt>
                     <dd className="text-lg font-medium text-gray-900">
-                      {stats.total}
+                      {submissions.length}
                     </dd>
                   </dl>
                 </div>
@@ -257,7 +247,7 @@ export default function InstructorGradingPage() {
                       Pending
                     </dt>
                     <dd className="text-lg font-medium text-gray-900">
-                      {stats.pending}
+                      {submissions.filter(s => s.grade === null).length}
                     </dd>
                   </dl>
                 </div>
@@ -277,83 +267,21 @@ export default function InstructorGradingPage() {
                       Graded
                     </dt>
                     <dd className="text-lg font-medium text-gray-900">
-                      {stats.graded}
+                      {submissions.filter(s => s.grade !== null).length}
                     </dd>
                   </dl>
                 </div>
               </div>
             </div>
-          </div>
-
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <AlertCircle className="h-6 w-6 text-red-600" />
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Late Submissions
-                    </dt>
-                    <dd className="text-lg font-medium text-gray-900">
-                      {stats.late}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Filter Tabs */}
-        <div className="bg-white shadow rounded-lg mb-6">
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex">
-              <button
-                onClick={() => setFilter('pending')}
-                className={`py-2 px-4 border-b-2 font-medium text-sm ${
-                  filter === 'pending'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Pending ({stats.pending})
-              </button>
-              <button
-                onClick={() => setFilter('graded')}
-                className={`py-2 px-4 border-b-2 font-medium text-sm ${
-                  filter === 'graded'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Graded ({stats.graded})
-              </button>
-              <button
-                onClick={() => setFilter('all')}
-                className={`py-2 px-4 border-b-2 font-medium text-sm ${
-                  filter === 'all'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                All ({stats.total})
-              </button>
-            </nav>
           </div>
         </div>
 
         {/* Submissions List */}
-        {filteredSubmissions.length === 0 ? (
+        {submissions.length === 0 ? (
           <div className="bg-white rounded-lg shadow p-8 text-center">
             <FileText className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No submissions found</h3>
-            <p className="text-gray-500">
-              {filter === 'pending' && 'All submissions have been graded.'}
-              {filter === 'graded' && 'No graded submissions yet.'}
-              {filter === 'all' && 'No submissions available.'}
-            </p>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No submissions yet</h3>
+            <p className="text-gray-500">Students haven't submitted this assignment yet.</p>
           </div>
         ) : (
           <div className="bg-white shadow rounded-lg overflow-hidden">
@@ -362,9 +290,6 @@ export default function InstructorGradingPage() {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Student
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Assignment
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Submitted
@@ -381,7 +306,7 @@ export default function InstructorGradingPage() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredSubmissions.map((submission) => (
+                {submissions.map((submission) => (
                   <tr key={submission.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
@@ -390,16 +315,6 @@ export default function InstructorGradingPage() {
                         </div>
                         <div className="text-sm text-gray-500">
                           {submission.student.student_id}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">
-                          {submission.assignments.title}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {submission.assignments.courses?.code || 'N/A'}
                         </div>
                       </div>
                     </td>
@@ -415,10 +330,10 @@ export default function InstructorGradingPage() {
                       {submission.grade !== null ? (
                         <div className="text-sm">
                           <span className="font-medium text-gray-900">
-                            {submission.grade}/{submission.assignments.max_points}
+                            {submission.grade}/{assignment?.max_points}
                           </span>
                           <span className="text-gray-500 ml-1">
-                            ({submission.grade_percentage?.toFixed(1)}%)
+                            ({((submission.grade / (assignment?.max_points || 1)) * 100).toFixed(1)}%)
                           </span>
                         </div>
                       ) : (
@@ -441,7 +356,7 @@ export default function InstructorGradingPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <button
                         onClick={() => openGradingModal(submission)}
-                        className="text-blue-600 hover:text-blue-900 mr-3"
+                        className="text-blue-600 hover:text-blue-900"
                       >
                         {submission.grade !== null ? 'Edit Grade' : 'Grade'}
                       </button>
@@ -454,7 +369,7 @@ export default function InstructorGradingPage() {
         )}
 
         {/* Grading Modal */}
-        {selectedSubmission && (
+        {selectedSubmission && assignment && (
           <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
               <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
@@ -476,8 +391,6 @@ export default function InstructorGradingPage() {
                   <div className="bg-gray-50 rounded-lg p-4">
                     <p className="text-sm"><strong>Name:</strong> {selectedSubmission.student.full_name}</p>
                     <p className="text-sm"><strong>ID:</strong> {selectedSubmission.student.student_id}</p>
-                    <p className="text-sm"><strong>Assignment:</strong> {selectedSubmission.assignments.title}</p>
-                    <p className="text-sm"><strong>Course:</strong> {selectedSubmission.assignments.courses?.code || 'N/A'}</p>
                     <p className="text-sm"><strong>Submitted:</strong> {formatDate(selectedSubmission.submitted_at)}</p>
                     {selectedSubmission.is_late && (
                       <p className="text-sm text-red-600"><strong>Status:</strong> Late Submission</p>
@@ -507,12 +420,12 @@ export default function InstructorGradingPage() {
                 {/* Grade Input */}
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-gray-900 mb-2">
-                    Grade (out of {selectedSubmission.assignments.max_points})
+                    Grade (out of {assignment.max_points})
                   </label>
                   <input
                     type="number"
                     min="0"
-                    max={selectedSubmission.assignments.max_points}
+                    max={assignment.max_points}
                     step="0.5"
                     value={gradeValue}
                     onChange={(e) => setGradeValue(e.target.value)}
@@ -540,7 +453,7 @@ export default function InstructorGradingPage() {
                   <div className="mb-6 bg-blue-50 rounded-lg p-4">
                     <h4 className="text-sm font-medium text-blue-900 mb-2">Previous Grade</h4>
                     <p className="text-sm text-blue-800">
-                      <strong>Grade:</strong> {selectedSubmission.grade}/{selectedSubmission.assignments.max_points} ({selectedSubmission.grade_percentage?.toFixed(1)}%)
+                      <strong>Grade:</strong> {selectedSubmission.grade}/{assignment.max_points}
                     </p>
                     {selectedSubmission.feedback && (
                       <p className="text-sm text-blue-800 mt-2">

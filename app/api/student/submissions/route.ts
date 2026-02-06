@@ -91,13 +91,41 @@ export async function GET(request: NextRequest) {
       { auth: { autoRefreshToken: false, persistSession: false } }
     )
 
-    // For now, return empty submissions since we don't have assignments/submissions set up
-    // In a real system, you would get the student's submissions with assignment details
+    // Get student's submissions with assignment and course details
+    const { data: submissions, error } = await supabaseAdmin
+      .from('submissions')
+      .select(`
+        id,
+        submitted_at,
+        grade,
+        grade_percentage,
+        feedback,
+        graded_at,
+        status,
+        file_name,
+        file_url,
+        is_late,
+        assignments (
+          id,
+          title,
+          max_points,
+          due_date,
+          courses (
+            id,
+            name,
+            code
+          )
+        )
+      `)
+      .eq('student_id', currentUser.id)
+      .order('submitted_at', { ascending: false })
 
-    // Placeholder response for now
-    const submissions: any[] = []
+    if (error) {
+      console.error('Error fetching submissions:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
 
-    return NextResponse.json(submissions)
+    return NextResponse.json(submissions || [])
   } catch (error: any) {
     console.error('Student submissions API error:', error)
     return NextResponse.json({ 
